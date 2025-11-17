@@ -26,8 +26,8 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 @app.on_event("startup")
 def _startup() -> None:
-    app.state.config = load_config()
     init_db()
+    app.state.config = load_config()
 
 
 def get_config() -> AppConfig:
