@@ -11,7 +11,7 @@ from fastapi.templating import Jinja2Templates
 
 from .config import AppConfig, load_config, save_config
 from .models import DishEntry
-from .storage import add_dish, init_db, load_dishes
+from .storage import add_dish, delete_dish, get_dish, init_db, load_dishes, update_dish
 
 BASE_DIR = Path(__file__).resolve().parent
 TEMPLATES_DIR = BASE_DIR / "templates"
@@ -58,6 +58,10 @@ def _is_ip_allowed(request: Request, config: AppConfig) -> bool:
 
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request) -> HTMLResponse:
+    view_mode = request.query_params.get("view", "cards")
+    if view_mode not in {"cards", "table"}:
+        view_mode = "cards"
+
     dishes = load_dishes()
     return templates.TemplateResponse(
         "home.html",
@@ -66,6 +70,7 @@ def home(request: Request) -> HTMLResponse:
             "dishes": dishes,
             "dish_types": get_config().dish_types,
             "admin_path": ADMIN_PATH,
+            "view_mode": view_mode,
         },
     )
 
@@ -129,6 +134,7 @@ def admin_page(request: Request) -> HTMLResponse:
         {
             "request": request,
             "config": config,
+            "dishes": load_dishes(),
             "admin_path": ADMIN_PATH,
         },
     )
@@ -156,4 +162,83 @@ def update_admin_settings(
     save_config(new_config)
     app.state.config = new_config
 
+    return RedirectResponse(url=request.url_for("admin_page"), status_code=status.HTTP_303_SEE_OTHER)
+
+
+def _get_dish_or_404(dish_id: int) -> DishEntry:
+    dish = get_dish(dish_id)
+    if not dish:
+        raise HTTPException(status_code=404, detail="Dish not found")
+    return dish
+
+
+@app.get(f"{ADMIN_PATH}/dishes/{{dish_id}}", response_class=HTMLResponse)
+def edit_dish_form(request: Request, dish_id: int) -> HTMLResponse:
+    config = get_config()
+    if not _is_ip_allowed(request, config):
+        raise HTTPException(status_code=403, detail="Admin access restricted")
+
+    dish = _get_dish_or_404(dish_id)
+    return templates.TemplateResponse(
+        "admin_edit_dish.html",
+        {
+            "request": request,
+            "dish": dish,
+            "dish_types": config.dish_types,
+            "admin_path": ADMIN_PATH,
+        },
+    )
+
+
+@app.post(f"{ADMIN_PATH}/dishes/{{dish_id}}")
+def edit_dish_submit(
+    request: Request,
+    dish_id: int,
+    contributor: str = Form(..., min_length=1, max_length=80),
+    dish_name: str = Form(..., min_length=1, max_length=120),
+    dish_type: str = Form(...),
+    allergens: Optional[str] = Form(None),
+    notes: Optional[str] = Form(None),
+    vegan: Optional[str] = Form(None),
+    vegetarian: Optional[str] = Form(None),
+    gluten_free: Optional[str] = Form(None),
+) -> RedirectResponse:
+    config = get_config()
+    if not _is_ip_allowed(request, config):
+        raise HTTPException(status_code=403, detail="Admin access restricted")
+
+    dish = _get_dish_or_404(dish_id)
+    if dish_type not in config.dish_types:
+        raise HTTPException(status_code=400, detail="Unknown dish type")
+
+    dietary_flags: List[str] = []
+    if vegan:
+        dietary_flags.append("Vegan")
+    if vegetarian:
+        dietary_flags.append("Vegetarian")
+    if gluten_free:
+        dietary_flags.append("Gluten-Free")
+
+    updated = dish.model_copy(
+        update={
+            "contributor": contributor.strip(),
+            "dish_name": dish_name.strip(),
+            "dish_type": dish_type,
+            "allergens": _parse_allergens(allergens),
+            "dietary_flags": dietary_flags,
+            "notes": notes.strip() if notes else None,
+        }
+    )
+    update_dish(dish_id, updated)
+    return RedirectResponse(url=request.url_for("admin_page"), status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.post(f"{ADMIN_PATH}/dishes/{{dish_id}}/delete")
+def delete_dish_action(request: Request, dish_id: int) -> RedirectResponse:
+    config = get_config()
+    if not _is_ip_allowed(request, config):
+        raise HTTPException(status_code=403, detail="Admin access restricted")
+
+    _get_dish_or_404(dish_id)
+    delete_dish(dish_id)
     return RedirectResponse(url=request.url_for("admin_page"), status_code=status.HTTP_303_SEE_OTHER)

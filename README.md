@@ -2,6 +2,12 @@
 
 FastAPI-powered potluck planner where guests can log what they are bringing, show allergens, and mark dietary flags.
 
+### Highlights
+
+- Bootstrap UI with a toggle between card and table views so guests can scan long lists.
+- Admin portal to update dish types/IP allowlist plus edit or delete any submission.
+- File-backed SQLite database (`data/dishlist.db`) ready to map to a Docker volume later.
+
 ### Getting started
 
 ```bash
@@ -17,6 +23,7 @@ The configuration screen lives at `/pantry-admin`. Only IPs/networks listed in `
 
 - Control the dish types shown in the submission form
 - Update which IP ranges may open the admin URL
+- Edit or delete dishes without grabbing anyone's laptop
 
 All data is file-based so it is easy to reset or version control.
 

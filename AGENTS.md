@@ -24,6 +24,7 @@ does what.
 - Curates the list of dish types so submitters always have relevant options.
 - Audits allergen labeling and dietary flags to ensure clarity for guests with
   restrictions.
+- Uses the management table to edit or delete dishes when updates are needed.
 
 ### Admin Playbook
 

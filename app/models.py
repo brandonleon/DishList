@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 
 class DishEntry(BaseModel):
+    id: Optional[int] = None
     contributor: str = Field(..., min_length=1, max_length=80)
     dish_name: str = Field(..., min_length=1, max_length=120)
     dish_type: str
