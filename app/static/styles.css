@@ -5,3 +5,11 @@ body {
 .splash-card {
   border: 2px dashed rgba(13, 110, 253, 0.3);
 }
+
+.htmx-indicator {
+  display: none;
+}
+
+.htmx-indicator.htmx-request {
+  display: inline-flex;
+}
