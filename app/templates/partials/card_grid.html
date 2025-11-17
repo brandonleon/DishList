@@ -1,0 +1,56 @@
+{% if card_dishes %}
+  {% for dish in card_dishes %}
+    <div class="col">
+      <div class="card h-100 shadow-sm">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <div>
+              <p class="text-uppercase small text-muted mb-1">{{ dish.dish_type }}</p>
+              <h3 class="h5 mb-0">{{ dish.dish_name }}</h3>
+            </div>
+            <span class="badge bg-primary-subtle text-primary">{{ dish.contributor }}</span>
+          </div>
+          {% if dish.notes %}
+            <p class="mb-3">{{ dish.notes }}</p>
+          {% endif %}
+          <div class="mb-3">
+            <p class="fw-semibold mb-1">Allergens</p>
+            {% if dish.allergens %}
+              <ul class="list-unstyled small mb-0">
+                {% for allergen in dish.allergens %}
+                  <li>• {{ allergen }}</li>
+                {% endfor %}
+              </ul>
+            {% else %}
+              <p class="text-muted small mb-0">No allergens reported</p>
+            {% endif %}
+          </div>
+          <div>
+            <p class="fw-semibold mb-1">Dietary Notes</p>
+            {% if dish.dietary_flags %}
+              <div class="d-flex flex-wrap gap-2">
+                {% for flag in dish.dietary_flags %}
+                  <span class="badge rounded-pill text-bg-success">{{ flag }}</span>
+                {% endfor %}
+              </div>
+            {% else %}
+              <p class="text-muted small mb-0">No special flags</p>
+            {% endif %}
+          </div>
+        </div>
+        <div class="card-footer text-muted small">
+          Added {{ dish.created_at.strftime('%b %d, %Y %I:%M %p') }}
+        </div>
+      </div>
+    </div>
+  {% endfor %}
+{% else %}
+  <div class="col">
+    <div class="card h-100 shadow-sm">
+      <div class="card-body text-center text-muted py-5">
+        No dishes match this search yet.
+      </div>
+    </div>
+  </div>
+{% endif %}
+

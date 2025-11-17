@@ -40,6 +40,28 @@ def _parse_allergens(raw: Optional[str]) -> List[str]:
     return [chunk.strip() for chunk in raw.split(",") if chunk.strip()]
 
 
+def _filter_dishes(dishes: List[DishEntry], query: str) -> List[DishEntry]:
+    search = query.strip().lower()
+    if not search:
+        return dishes
+
+    filtered: List[DishEntry] = []
+    for dish in dishes:
+        searchable_chunks = [
+            dish.dish_name,
+            dish.contributor,
+            dish.dish_type,
+            dish.notes or "",
+            ", ".join(dish.allergens),
+            ", ".join(dish.dietary_flags),
+        ]
+        for chunk in searchable_chunks:
+            if chunk and search in chunk.lower():
+                filtered.append(dish)
+                break
+    return filtered
+
+
 def _is_ip_allowed(request: Request, config: AppConfig) -> bool:
     client_host = request.client.host if request.client else "127.0.0.1"
     try:
@@ -63,6 +85,8 @@ def home(request: Request) -> HTMLResponse:
         view_mode = "cards"
 
     dishes = load_dishes()
+    search_query = request.query_params.get("search", "").strip()
+    filtered_dishes = _filter_dishes(dishes, search_query) if search_query else dishes
     return templates.TemplateResponse(
         "home.html",
         {
@@ -71,6 +95,9 @@ def home(request: Request) -> HTMLResponse:
             "dish_types": get_config().dish_types,
             "admin_path": ADMIN_PATH,
             "view_mode": view_mode,
+            "search_query": search_query,
+            "table_dishes": filtered_dishes,
+            "card_dishes": filtered_dishes,
         },
     )
 
@@ -127,6 +154,24 @@ def add_submission(
 def favicon() -> FileResponse:
     # Serve the uploaded favicon from the static directory for browser requests.
     return FileResponse(STATIC_DIR / "favicon.ico", media_type="image/x-icon")
+
+
+@app.get("/table/rows", response_class=HTMLResponse)
+def table_rows_partial(request: Request, search: str = "") -> HTMLResponse:
+    dishes = load_dishes()
+    filtered = _filter_dishes(dishes, search)
+    return templates.TemplateResponse(
+        "partials/table_rows.html", {"request": request, "table_dishes": filtered}
+    )
+
+
+@app.get("/cards/grid", response_class=HTMLResponse)
+def card_grid_partial(request: Request, search: str = "") -> HTMLResponse:
+    dishes = load_dishes()
+    filtered = _filter_dishes(dishes, search)
+    return templates.TemplateResponse(
+        "partials/card_grid.html", {"request": request, "card_dishes": filtered}
+    )
 
 
 @app.get(ADMIN_PATH, response_class=HTMLResponse)
