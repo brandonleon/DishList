@@ -11,11 +11,11 @@ FastAPI-powered potluck planner where guests can log what they are bringing, sho
 ### Getting started
 
 ```bash
-pip install -e .
-python main.py
+uv sync
+uv run main.py
 ```
 
-Visit http://127.0.0.1:8000/ to see the potluck board. Submissions are stored in `data/dishlist.db` (SQLite).
+Visit <http://127.0.0.1:8000/> to see the potluck board. Submissions are stored in `data/dishlist.db` (SQLite).
 
 ### Admin access
 
