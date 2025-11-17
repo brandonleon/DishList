@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from fastapi import FastAPI, Form, HTTPException, Request, status
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -121,6 +121,12 @@ def add_submission(
     )
     add_dish(entry)
     return RedirectResponse(url=request.url_for("home"), status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon() -> FileResponse:
+    # Serve the uploaded favicon from the static directory for browser requests.
+    return FileResponse(STATIC_DIR / "favicon.ico", media_type="image/x-icon")
 
 
 @app.get(ADMIN_PATH, response_class=HTMLResponse)
