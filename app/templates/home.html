@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="mb-5">
+  <div class="d-flex flex-column flex-md-row justify-content-between align-items-start gap-3">
+    <div>
+      <p class="text-uppercase text-muted small mb-1">Community Potluck</p>
+      <h1 class="fw-bold">Who's bringing what?</h1>
+      <p class="text-secondary">
+        Track dishes, highlight allergens, and make sure every guest has something delicious.
+      </p>
+    </div>
+    <div>
+      <a class="btn btn-lg btn-primary" href="{{ url_for('add_form') }}">Share Your Dish</a>
+    </div>
+  </div>
+</section>
+
+{% if dishes %}
+  <div class="row row-cols-1 row-cols-md-2 g-4">
+    {% for dish in dishes | sort(attribute='created_at', reverse=True) %}
+      <div class="col">
+        <div class="card h-100 shadow-sm">
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <div>
+                <p class="text-uppercase small text-muted mb-1">{{ dish.dish_type }}</p>
+                <h3 class="h5 mb-0">{{ dish.dish_name }}</h3>
+              </div>
+              <span class="badge bg-primary-subtle text-primary">{{ dish.contributor }}</span>
+            </div>
+            {% if dish.notes %}
+              <p class="mb-3">{{ dish.notes }}</p>
+            {% endif %}
+            <div class="mb-3">
+              <p class="fw-semibold mb-1">Allergens</p>
+              {% if dish.allergens %}
+                <ul class="list-unstyled small mb-0">
+                  {% for allergen in dish.allergens %}
+                    <li>• {{ allergen }}</li>
+                  {% endfor %}
+                </ul>
+              {% else %}
+                <p class="text-muted small mb-0">No allergens reported</p>
+              {% endif %}
+            </div>
+            <div>
+              <p class="fw-semibold mb-1">Dietary Notes</p>
+              {% if dish.dietary_flags %}
+                <div class="d-flex flex-wrap gap-2">
+                  {% for flag in dish.dietary_flags %}
+                    <span class="badge rounded-pill text-bg-success">{{ flag }}</span>
+                  {% endfor %}
+                </div>
+              {% else %}
+                <p class="text-muted small mb-0">No special flags</p>
+              {% endif %}
+            </div>
+          </div>
+          <div class="card-footer text-muted small">
+            Added {{ dish.created_at.strftime('%b %d, %Y %I:%M %p') }}
+          </div>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+{% else %}
+  <div class="splash-card text-center p-5 bg-white rounded-4 shadow-sm">
+    <p class="text-uppercase small text-muted">The table is bare</p>
+    <h2 class="fw-bold">This potluck is a blank canvas</h2>
+    <p class="text-secondary mb-4">
+      No dishes have landed yet—plant the first culinary flag and inspire everyone else.
+    </p>
+    <a class="btn btn-lg btn-success" href="{{ url_for('add_form') }}">Add the very first dish</a>
+  </div>
+{% endif %}
+{% endblock %}

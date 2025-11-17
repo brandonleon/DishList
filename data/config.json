@@ -1,0 +1,11 @@
+{
+  "dish_types": [
+    "Main Dish",
+    "Side Dish",
+    "Dessert",
+    "Beverage"
+  ],
+  "admin_networks": [
+    "127.0.0.1/32"
+  ]
+}

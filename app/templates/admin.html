@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-8">
+    <div class="alert alert-warning d-flex align-items-center" role="alert">
+      <div>
+        <strong>Heads up:</strong> This control room is only for trusted hosts. Keep this URL close.
+      </div>
+    </div>
+    <div class="card shadow-sm">
+      <div class="card-body p-4">
+        <h1 class="h4 mb-4">Potluck configuration</h1>
+        <form method="post" action="{{ url_for('update_admin_settings') }}">
+          <div class="mb-4">
+            <label for="dish_types_input" class="form-label">Dish types</label>
+            <textarea class="form-control" id="dish_types_input" name="dish_types_input" rows="5">{% for dish in config.dish_types %}{{ dish }}
+{% endfor %}</textarea>
+            <div class="form-text">One dish type per line.</div>
+          </div>
+          <div class="mb-4">
+            <label for="admin_networks_input" class="form-label">Allowed admin networks</label>
+            <textarea class="form-control" id="admin_networks_input" name="admin_networks_input" rows="4">{% for block in config.admin_networks %}{{ block }}
+{% endfor %}</textarea>
+            <div class="form-text">Provide IP addresses or CIDR ranges (e.g. 192.168.1.0/24).</div>
+          </div>
+          <div class="d-flex justify-content-end">
+            <button type="submit" class="btn btn-danger">Save configuration</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
