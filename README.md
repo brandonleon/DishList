@@ -12,7 +12,10 @@ FastAPI-powered potluck planner where guests can log what they are bringing, sho
 
 ```bash
 uv sync
-uv run main.py
+uv run main.py  # local dev (reload enabled)
+
+# or start Uvicorn directly (e.g., for production)
+uv run uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
 Visit <http://127.0.0.1:8000/> to see the potluck board. Submissions are stored in `data/dishlist.db` (SQLite).
