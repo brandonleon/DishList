@@ -1,0 +1,31 @@
+{% if table_dishes %}
+  {% for dish in table_dishes %}
+    <tr>
+      <td class="fw-semibold">{{ dish.dish_name }}</td>
+      <td>{{ dish.dish_type }}</td>
+      <td>{{ dish.contributor }}</td>
+      <td>
+        {% if dish.allergens %}
+          {{ dish.allergens | join(', ') }}
+        {% else %}
+          <span class="text-muted">None</span>
+        {% endif %}
+      </td>
+      <td>
+        {% if dish.dietary_flags %}
+          {{ dish.dietary_flags | join(', ') }}
+        {% else %}
+          <span class="text-muted">None</span>
+        {% endif %}
+      </td>
+      <td>{{ dish.notes or '—' }}</td>
+      <td class="text-nowrap">{{ dish.created_at.strftime('%b %d, %Y %I:%M %p') }}</td>
+    </tr>
+  {% endfor %}
+{% else %}
+  <tr>
+    <td colspan="7" class="text-center py-4 text-muted">
+      No dishes match this search just yet.
+    </td>
+  </tr>
+{% endif %}
