@@ -5,6 +5,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 from urllib.parse import urlencode
+from importlib import metadata
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # pragma: no cover - fallback for Python < 3.11
+    tomllib = None  # type: ignore
 
 from fastapi import FastAPI, Form, HTTPException, Request, status
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
@@ -48,6 +54,7 @@ TAG_CATEGORY_CLASSES = {
     "Serving logistics": "tag-pill-logistics",
 }
 DEFAULT_TAG_CLASS = "tag-pill-generic"
+APP_VERSION = None
 
 
 def _dietary_badge_class(flag: str) -> str:
@@ -81,8 +88,26 @@ def _format_dish_timestamp(value: datetime | str) -> str:
     return local_dt.strftime("%b %d, %Y %I:%M %p")
 
 
+def _load_app_version() -> str:
+    try:
+        return metadata.version("dishlist")
+    except metadata.PackageNotFoundError:
+        pyproject = BASE_DIR.parent / "pyproject.toml"
+        if tomllib and pyproject.exists():
+            try:
+                with pyproject.open("rb") as fh:
+                    data = tomllib.load(fh)
+                return data.get("project", {}).get("version", "0.0.0")
+            except Exception:
+                return "0.0.0"
+        return "0.0.0"
+
+
+APP_VERSION = _load_app_version()
+
 templates.env.filters["format_dish_timestamp"] = _format_dish_timestamp
 templates.env.filters["tag_category_class"] = _tag_category_class
+templates.env.globals["app_version"] = APP_VERSION
 
 
 @app.on_event("startup")
