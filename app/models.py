@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 
 from pydantic import BaseModel, Field
+
+
+def _current_utc() -> datetime:
+    """Return a timezone-aware UTC timestamp."""
+
+    return datetime.now(timezone.utc)
 
 
 class DishEntry(BaseModel):
@@ -16,4 +22,4 @@ class DishEntry(BaseModel):
     allergens: List[str] = Field(default_factory=list)
     dietary_flags: List[str] = Field(default_factory=list)
     notes: Optional[str] = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_current_utc)

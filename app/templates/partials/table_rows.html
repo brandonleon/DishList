@@ -23,7 +23,7 @@
         {% endif %}
       </td>
       <td>{{ dish.notes or '—' }}</td>
-      <td class="text-nowrap">{{ dish.created_at.strftime('%b %d, %Y %I:%M %p') }}</td>
+      <td class="text-nowrap">{{ dish.created_at | format_dish_timestamp }}</td>
     </tr>
   {% endfor %}
 {% else %}

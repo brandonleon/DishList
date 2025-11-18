@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ipaddress
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 
@@ -39,6 +40,22 @@ def _dietary_badge_class(flag: str) -> str:
 
 
 templates.env.filters["dietary_badge_class"] = _dietary_badge_class
+
+
+def _format_dish_timestamp(value: datetime | str) -> str:
+    """Render timestamps in the server's local timezone."""
+
+    if isinstance(value, str):
+        parsed = datetime.fromisoformat(value)
+    else:
+        parsed = value
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    local_dt = parsed.astimezone()
+    return local_dt.strftime("%b %d, %Y %I:%M %p")
+
+
+templates.env.filters["format_dish_timestamp"] = _format_dish_timestamp
 
 
 @app.on_event("startup")
