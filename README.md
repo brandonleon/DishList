@@ -20,6 +20,20 @@ uv run uvicorn main:app --host 0.0.0.0 --port 8000
 
 Visit <http://127.0.0.1:8000/> to see the potluck board. Submissions are stored in `data/dishlist.db` (SQLite).
 
+### Docker
+
+```bash
+# build the image (from the repo root)
+docker build -t dishl-list .
+
+# run the container, exposing port 8000 and persisting the SQLite/config files
+docker run --rm -p 8000:8000 \
+  -v "$(pwd)/data:/app/data" \
+  dishl-list
+```
+
+The container defaults to port `8000`, but you can override it with `-e PORT=8080`. Mounting the `data/` directory keeps `dishlist.db` and `config.json` in sync with the host so the admin tools retain state between runs.
+
 ### Admin access
 
 The configuration screen lives at `/pantry-admin`. Only IPs/networks listed in `data/config.json` may hit that route. Use it to:
