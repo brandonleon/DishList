@@ -23,6 +23,23 @@ app = FastAPI(title="DishList")
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
+PLANT_BASED_FLAGS = {"vegan", "vegetarian"}
+ALLERGEN_FREE_FLAGS = {"gluten-free", "dairy-free"}
+
+
+def _dietary_badge_class(flag: str) -> str:
+    """Return the Bootstrap badge classes for a dietary flag."""
+
+    normalized = flag.strip().lower()
+    if normalized in PLANT_BASED_FLAGS:
+        return "bg-success-subtle text-success"
+    if normalized in ALLERGEN_FREE_FLAGS:
+        return "bg-info-subtle text-info"
+    return "bg-secondary-subtle text-secondary"
+
+
+templates.env.filters["dietary_badge_class"] = _dietary_badge_class
+
 
 @app.on_event("startup")
 def _startup() -> None:
@@ -125,6 +142,7 @@ def add_submission(
     vegan: Optional[str] = Form(None),
     vegetarian: Optional[str] = Form(None),
     gluten_free: Optional[str] = Form(None),
+    dairy_free: Optional[str] = Form(None),
 ) -> RedirectResponse:
     config = get_config()
     if dish_type not in config.dish_types:
@@ -137,6 +155,8 @@ def add_submission(
         dietary_flags.append("Vegetarian")
     if gluten_free:
         dietary_flags.append("Gluten-Free")
+    if dairy_free:
+        dietary_flags.append("Dairy-Free")
 
     entry = DishEntry(
         contributor=contributor.strip(),
@@ -253,6 +273,7 @@ def edit_dish_submit(
     vegan: Optional[str] = Form(None),
     vegetarian: Optional[str] = Form(None),
     gluten_free: Optional[str] = Form(None),
+    dairy_free: Optional[str] = Form(None),
 ) -> RedirectResponse:
     config = get_config()
     if not _is_ip_allowed(request, config):
@@ -269,6 +290,8 @@ def edit_dish_submit(
         dietary_flags.append("Vegetarian")
     if gluten_free:
         dietary_flags.append("Gluten-Free")
+    if dairy_free:
+        dietary_flags.append("Dairy-Free")
 
     updated = dish.model_copy(
         update={

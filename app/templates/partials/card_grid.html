@@ -30,7 +30,7 @@
             {% if dish.dietary_flags %}
               <div class="d-flex flex-wrap gap-2">
                 {% for flag in dish.dietary_flags %}
-                  <span class="badge rounded-pill text-bg-success">{{ flag }}</span>
+                  <span class="badge rounded-pill {{ flag | dietary_badge_class }}">{{ flag }}</span>
                 {% endfor %}
               </div>
             {% else %}
@@ -53,4 +53,3 @@
     </div>
   </div>
 {% endif %}
-

@@ -13,7 +13,11 @@
       </td>
       <td>
         {% if dish.dietary_flags %}
-          {{ dish.dietary_flags | join(', ') }}
+          <div class="d-flex flex-wrap gap-1">
+            {% for flag in dish.dietary_flags %}
+              <span class="badge rounded-pill {{ flag | dietary_badge_class }}">{{ flag }}</span>
+            {% endfor %}
+          </div>
         {% else %}
           <span class="text-muted">None</span>
         {% endif %}
