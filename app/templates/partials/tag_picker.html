@@ -1,0 +1,47 @@
+{% set tag_picker_id = picker_id | default('dietary-tags') %}
+{% set tag_picker_label = label | default('Dietary Notes') %}
+{% set tag_picker_selected = selected_tag_ids | default([]) %}
+{% set tag_picker_field_name = field_name | default('dietary_tags') %}
+{% set tag_picker_helper = helper_text | default('Select every tag that applies to this dish.') %}
+<div class="tag-picker" data-tag-picker id="{{ tag_picker_id }}">
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <label class="form-label mb-0" for="{{ tag_picker_id }}-search">{{ tag_picker_label }}</label>
+    <span class="badge rounded-pill bg-body-secondary text-body-secondary small" data-tag-selected-count>
+      {{ tag_picker_selected | length }} selected
+    </span>
+  </div>
+  <input
+    type="search"
+    class="form-control form-control-sm"
+    id="{{ tag_picker_id }}-search"
+    placeholder="Search by tag name"
+    data-tag-search
+  />
+  <div class="form-text">{{ tag_picker_helper }}</div>
+  <div class="tag-picker-groups mt-3">
+    {% for category, tags in tag_groups %}
+      <div class="tag-picker-group mb-3" data-tag-group>
+        <p class="text-uppercase small text-muted mb-2">{{ category }}</p>
+        <div class="d-flex flex-wrap gap-2">
+          {% for tag in tags %}
+            {% set input_id = tag_picker_id ~ '-' ~ tag.id %}
+            <div class="tag-picker-option" data-tag-option data-tag-name="{{ tag.name | lower }}">
+              <input
+                class="btn-check"
+                type="checkbox"
+                id="{{ input_id }}"
+                name="{{ tag_picker_field_name }}"
+                value="{{ tag.id }}"
+                {% if tag.id in tag_picker_selected %}checked{% endif %}
+              />
+              <label class="btn btn-sm tag-pill {{ tag.category | tag_category_class }}" for="{{ input_id }}">{{ tag.name }}</label>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+  <div class="alert alert-light border text-muted small mb-0 d-none" data-tag-empty-state>
+    No tags match that search.
+  </div>
+</div>

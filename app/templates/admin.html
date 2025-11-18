@@ -39,6 +39,75 @@
       <div class="card-body p-4">
         <div class="d-flex flex-column flex-md-row justify-content-between align-items-start gap-2 mb-3">
           <div>
+            <h2 class="h5 mb-1">Dietary tag library</h2>
+            <p class="text-muted small mb-0">Curate the Dietary Notes guests can pick from.</p>
+          </div>
+        </div>
+        {% if tag_success %}
+          <div class="alert alert-success" role="alert">{{ tag_success }}</div>
+        {% endif %}
+        {% if tag_error %}
+          <div class="alert alert-danger" role="alert">{{ tag_error }}</div>
+        {% endif %}
+        <form class="row g-3 mb-4 align-items-end" method="post" action="{{ url_for('add_tag_action') }}">
+          <div class="col-md-6">
+            <label for="tag_name" class="form-label">Tag label</label>
+            <input type="text" class="form-control" id="tag_name" name="tag_name" placeholder="e.g., Peanut-free" required />
+          </div>
+          <div class="col-md-4">
+            <label for="tag_category" class="form-label">Category</label>
+            <select class="form-select" id="tag_category" name="tag_category" required>
+              {% for category in tag_categories %}
+                <option value="{{ category }}">{{ category }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-2 d-grid">
+            <button type="submit" class="btn btn-primary">Add tag</button>
+          </div>
+        </form>
+        {% if tag_groups %}
+          <div class="tag-admin-groups">
+            {% for category, tags in tag_groups %}
+              <div class="tag-admin-group mb-4">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  <h3 class="h6 mb-0">{{ category }}</h3>
+                  <span class="badge text-bg-light">{{ tags | length }} tags</span>
+                </div>
+                {% if tags %}
+                  <div class="d-flex flex-wrap gap-2">
+                    {% for tag in tags %}
+                      <form
+                        class="tag-admin-chip tag-pill {{ tag.category | tag_category_class }}"
+                        method="post"
+                        action="{{ url_for('delete_tag_action', tag_id=tag.id) }}"
+                        onsubmit="return confirm('Remove the &quot;{{ tag.name }}&quot; tag?');"
+                      >
+                        <span>{{ tag.name }}</span>
+                        <button type="submit" class="btn btn-link btn-sm text-danger p-0 ms-2">Remove</button>
+                      </form>
+                    {% endfor %}
+                  </div>
+                {% else %}
+                  <p class="text-muted small mb-0">No tags in this category yet.</p>
+                {% endif %}
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <p class="text-muted mb-0">No tags are configured yet.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row mt-4">
+  <div class="col-12">
+    <div class="card shadow-sm">
+      <div class="card-body p-4">
+        <div class="d-flex flex-column flex-md-row justify-content-between align-items-start gap-2 mb-3">
+          <div>
             <h2 class="h5 mb-1">Manage dishes</h2>
             <p class="text-muted small mb-0">Edit, delete, or nudge contributors without leaving admin.</p>
           </div>
@@ -73,7 +142,14 @@
                       {% endif %}
                     </td>
                     <td>
-                      {% if dish.dietary_flags %}
+                      {% set tags = dish.tags or [] %}
+                      {% if tags %}
+                        <div class="d-flex flex-wrap gap-1">
+                          {% for tag in tags %}
+                            <span class="badge tag-pill {{ tag.category | tag_category_class }}">{{ tag.name }}</span>
+                          {% endfor %}
+                        </div>
+                      {% elif dish.dietary_flags %}
                         <div class="d-flex flex-wrap gap-1">
                           {% for flag in dish.dietary_flags %}
                             <span class="badge rounded-pill {{ flag | dietary_badge_class }}">{{ flag }}</span>

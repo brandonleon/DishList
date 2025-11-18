@@ -21,5 +21,14 @@ class DishEntry(BaseModel):
     dish_type: str
     allergens: List[str] = Field(default_factory=list)
     dietary_flags: List[str] = Field(default_factory=list)
+    tag_ids: List[int] = Field(default_factory=list)
+    tags: List["Tag"] = Field(default_factory=list)
     notes: Optional[str] = None
     created_at: datetime = Field(default_factory=_current_utc)
+
+
+class Tag(BaseModel):
+    id: int
+    name: str
+    category: str
+    position: int
