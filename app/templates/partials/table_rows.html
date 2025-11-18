@@ -12,7 +12,14 @@
         {% endif %}
       </td>
       <td>
-        {% if dish.dietary_flags %}
+        {% set tags = dish.tags or [] %}
+        {% if tags %}
+          <div class="d-flex flex-wrap gap-1">
+            {% for tag in tags %}
+              <span class="badge tag-pill {{ tag.category | tag_category_class }}">{{ tag.name }}</span>
+            {% endfor %}
+          </div>
+        {% elif dish.dietary_flags %}
           <div class="d-flex flex-wrap gap-1">
             {% for flag in dish.dietary_flags %}
               <span class="badge rounded-pill {{ flag | dietary_badge_class }}">{{ flag }}</span>

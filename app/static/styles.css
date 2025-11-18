@@ -25,20 +25,88 @@ body {
   letter-spacing: 0.04em;
 }
 
-.tag-picker-option .btn {
+.tag-pill {
+  border-radius: 999px;
+  padding: 0.2rem 0.75rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  border: 1px solid transparent;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.badge.tag-pill {
+  line-height: 1.2;
+}
+
+.tag-pill-patterns {
+  background-color: #e7f6ec;
+  border-color: #c8ebd6;
+  color: #0f5132;
+}
+
+.tag-pill-avoidances {
+  background-color: #e3fafc;
+  border-color: #b8eef4;
+  color: #055160;
+}
+
+.tag-pill-prep {
+  background-color: #fff4e6;
+  border-color: #ffd7aa;
+  color: #8a4700;
+}
+
+.tag-pill-additives {
+  background-color: #f3e8ff;
+  border-color: #d6bcfa;
+  color: #5f249f;
+}
+
+.tag-pill-spice {
+  background-color: #fdecef;
+  border-color: #f8cdd6;
+  color: #812041;
+}
+
+.tag-pill-logistics {
+  background-color: #e7f1ff;
+  border-color: #c5dbff;
+  color: #0b3d91;
+}
+
+.tag-pill-generic {
+  background-color: #f1f3f5;
+  border-color: #dee2e6;
+  color: #495057;
+}
+
+.tag-picker-option .btn.tag-pill {
   text-transform: none;
+  background-image: none;
+  box-shadow: none;
+  color: inherit;
+  border-color: transparent;
+}
+
+.tag-picker-option .btn-check:checked + .tag-pill,
+.tag-picker-option .btn-check:active + .tag-pill {
+  box-shadow: inset 0 0 0 999px rgba(0, 0, 0, 0.08);
+}
+
+.tag-picker-option .btn-check:focus + .tag-pill {
+  box-shadow: 0 0 0 0.15rem rgba(13, 110, 253, 0.2);
 }
 
 .tag-admin-chip {
   display: inline-flex;
   align-items: center;
-  border: 1px solid #dee2e6;
-  border-radius: 999px;
-  background-color: #f8f9fa;
-  padding: 0.25rem 0.75rem;
-  font-size: 0.85rem;
+  gap: 0.5rem;
+  padding-right: 0.5rem;
 }
 
 .tag-admin-chip button {
   text-decoration: none;
+  font-size: 0.8rem;
 }

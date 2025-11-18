@@ -34,7 +34,7 @@
                 value="{{ tag.id }}"
                 {% if tag.id in tag_picker_selected %}checked{% endif %}
               />
-              <label class="btn btn-sm btn-outline-secondary rounded-pill" for="{{ input_id }}">{{ tag.name }}</label>
+              <label class="btn btn-sm tag-pill {{ tag.category | tag_category_class }}" for="{{ input_id }}">{{ tag.name }}</label>
             </div>
           {% endfor %}
         </div>

@@ -39,6 +39,15 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 PLANT_BASED_FLAGS = {"vegan", "vegetarian"}
 ALLERGEN_FREE_FLAGS = {"gluten-free", "dairy-free"}
+TAG_CATEGORY_CLASSES = {
+    "Dietary patterns": "tag-pill-patterns",
+    "Ingredient avoidances": "tag-pill-avoidances",
+    "Preparation and cross-contact": "tag-pill-prep",
+    "Additives and content": "tag-pill-additives",
+    "Spice and suitability": "tag-pill-spice",
+    "Serving logistics": "tag-pill-logistics",
+}
+DEFAULT_TAG_CLASS = "tag-pill-generic"
 
 
 def _dietary_badge_class(flag: str) -> str:
@@ -50,6 +59,10 @@ def _dietary_badge_class(flag: str) -> str:
     if normalized in ALLERGEN_FREE_FLAGS:
         return "bg-info-subtle text-info"
     return "bg-secondary-subtle text-secondary"
+
+
+def _tag_category_class(category: str) -> str:
+    return TAG_CATEGORY_CLASSES.get(category, DEFAULT_TAG_CLASS)
 
 
 templates.env.filters["dietary_badge_class"] = _dietary_badge_class
@@ -69,6 +82,7 @@ def _format_dish_timestamp(value: datetime | str) -> str:
 
 
 templates.env.filters["format_dish_timestamp"] = _format_dish_timestamp
+templates.env.filters["tag_category_class"] = _tag_category_class
 
 
 @app.on_event("startup")
@@ -199,6 +213,7 @@ def add_submission(
         allergens=_parse_allergens(allergens),
         dietary_flags=[tag.name for tag in tags],
         tag_ids=[tag.id for tag in tags],
+        tags=tags,
         notes=notes.strip() if notes else None,
     )
     add_dish(entry)
@@ -374,6 +389,7 @@ def edit_dish_submit(
             "allergens": _parse_allergens(allergens),
             "dietary_flags": [tag.name for tag in tags],
             "tag_ids": [tag.id for tag in tags],
+            "tags": tags,
             "notes": notes.strip() if notes else None,
         }
     )

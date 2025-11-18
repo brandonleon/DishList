@@ -25,6 +25,7 @@ DEFAULT_TAG_GROUPS = {
     "Dietary patterns": [
         "Vegan",
         "Vegetarian",
+        "Vegetarian but not vegan (contains eggs/honey)",
         "Pescatarian",
         "Kosher",
         "Halal",
@@ -39,6 +40,7 @@ DEFAULT_TAG_GROUPS = {
     "Ingredient avoidances": [
         "Gluten-Free",
         "Dairy-Free",
+        "Lactose-free (distinct from dairy-free)",
         "Peanut-free",
         "Tree-nut-free",
         "Egg-free",
@@ -70,8 +72,6 @@ DEFAULT_TAG_GROUPS = {
         "Medium heat",
         "Spicy heat",
         "Kid-friendly",
-        "Vegetarian but not vegan (contains eggs/honey)",
-        "Lactose-free (distinct from dairy-free)",
     ],
     "Serving logistics": [
         "Requires reheating",
@@ -81,6 +81,10 @@ DEFAULT_TAG_GROUPS = {
     ],
 }
 _CATEGORY_ORDER_LOOKUP = {category: idx for idx, category in enumerate(TAG_CATEGORY_ORDER)}
+CATEGORY_NORMALIZATION = {
+    "Vegetarian but not vegan (contains eggs/honey)": "Dietary patterns",
+    "Lactose-free (distinct from dairy-free)": "Ingredient avoidances",
+}
 
 
 def _get_connection() -> sqlite3.Connection:
@@ -176,6 +180,7 @@ def _row_to_entry(row: sqlite3.Row, tags: Optional[List[Tag]] = None) -> DishEnt
         allergens=json.loads(row["allergens"]),
         dietary_flags=dietary_flags,
         tag_ids=[tag.id for tag in tag_list],
+        tags=tag_list,
         notes=row["notes"],
         created_at=row["created_at"],
     )
@@ -559,6 +564,7 @@ def _seed_or_migrate_tags(conn: sqlite3.Connection) -> None:
     if tag_count == 0:
         _insert_default_tags(conn)
     _backfill_dish_tags(conn)
+    _normalize_existing_tag_categories(conn)
 
 
 def _insert_default_tags(conn: sqlite3.Connection) -> None:
@@ -598,3 +604,32 @@ def _backfill_dish_tags(conn: sqlite3.Connection) -> None:
                 tag_ids.append(tag_id)
         if tag_ids:
             _replace_dish_tags(conn, dish["id"], tag_ids)
+
+
+def _normalize_existing_tag_categories(conn: sqlite3.Connection) -> None:
+    for name, desired_category in CATEGORY_NORMALIZATION.items():
+        row = conn.execute(
+            """
+            SELECT id, category FROM tags WHERE name = ?
+            """,
+            (name,),
+        ).fetchone()
+        if not row or row["category"] == desired_category:
+            continue
+        pos_row = conn.execute(
+            """
+            SELECT COALESCE(MAX(position), -1) AS max_position
+            FROM tags
+            WHERE category = ?
+            """,
+            (desired_category,),
+        ).fetchone()
+        next_position = pos_row["max_position"] + 1
+        conn.execute(
+            """
+            UPDATE tags
+            SET category = ?, position = ?
+            WHERE id = ?
+            """,
+            (desired_category, next_position, row["id"]),
+        )
