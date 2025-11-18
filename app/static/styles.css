@@ -13,3 +13,32 @@ body {
 .htmx-indicator.htmx-request {
   display: inline-flex;
 }
+
+.tag-picker-group {
+  border: 1px solid #f1f3f5;
+  border-radius: 0.75rem;
+  padding: 0.75rem;
+  background-color: #fff;
+}
+
+.tag-picker-group p {
+  letter-spacing: 0.04em;
+}
+
+.tag-picker-option .btn {
+  text-transform: none;
+}
+
+.tag-admin-chip {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #dee2e6;
+  border-radius: 999px;
+  background-color: #f8f9fa;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.85rem;
+}
+
+.tag-admin-chip button {
+  text-decoration: none;
+}

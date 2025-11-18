@@ -28,26 +28,9 @@
             <label for="allergens" class="form-label">Allergens</label>
             <textarea class="form-control" id="allergens" name="allergens" rows="2">{{ (dish.allergens or []) | join(', ') }}</textarea>
           </div>
-          <div class="mb-3">
-            <span class="form-label d-block mb-2">Dietary callouts</span>
-            {% set flags = dish.dietary_flags or [] %}
-            <div class="form-check form-check-inline">
-              <input class="form-check-input" type="checkbox" id="vegan" name="vegan" value="on" {% if 'Vegan' in flags %}checked{% endif %} />
-              <label class="form-check-label" for="vegan">Vegan</label>
-            </div>
-            <div class="form-check form-check-inline">
-              <input class="form-check-input" type="checkbox" id="vegetarian" name="vegetarian" value="on" {% if 'Vegetarian' in flags %}checked{% endif %} />
-              <label class="form-check-label" for="vegetarian">Vegetarian</label>
-            </div>
-            <div class="form-check form-check-inline">
-              <input class="form-check-input" type="checkbox" id="gluten_free" name="gluten_free" value="on" {% if 'Gluten-Free' in flags %}checked{% endif %} />
-              <label class="form-check-label" for="gluten_free">Gluten-free</label>
-            </div>
-            <div class="form-check form-check-inline">
-              <input class="form-check-input" type="checkbox" id="dairy_free" name="dairy_free" value="on" {% if 'Dairy-Free' in flags %}checked{% endif %} />
-              <label class="form-check-label" for="dairy_free">Dairy-free</label>
-            </div>
-          </div>
+          {% with picker_id="edit-dietary-tags", selected_tag_ids=dish.tag_ids, helper_text="Search or scroll to update which tags belong to this dish." %}
+            {% include "partials/tag_picker.html" %}
+          {% endwith %}
           <div class="mb-4">
             <label for="notes" class="form-label">Notes</label>
             <textarea class="form-control" id="notes" name="notes" rows="3">{{ dish.notes or '' }}</textarea>

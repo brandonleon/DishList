@@ -29,25 +29,9 @@
             <textarea class="form-control" id="allergens" name="allergens" rows="2" placeholder="e.g., contains peanuts, contains dairy"></textarea>
             <div class="form-text">Separate allergens with commas so guests can scan quickly.</div>
           </div>
-          <div class="mb-3">
-            <span class="form-label d-block mb-2">Dish dietary callouts</span>
-            <div class="form-check form-check-inline">
-              <input class="form-check-input" type="checkbox" id="vegan" name="vegan" value="on" />
-              <label class="form-check-label" for="vegan">Vegan</label>
-            </div>
-            <div class="form-check form-check-inline">
-              <input class="form-check-input" type="checkbox" id="vegetarian" name="vegetarian" value="on" />
-              <label class="form-check-label" for="vegetarian">Vegetarian</label>
-            </div>
-            <div class="form-check form-check-inline">
-              <input class="form-check-input" type="checkbox" id="gluten_free" name="gluten_free" value="on" />
-              <label class="form-check-label" for="gluten_free">Gluten-free</label>
-            </div>
-            <div class="form-check form-check-inline">
-              <input class="form-check-input" type="checkbox" id="dairy_free" name="dairy_free" value="on" />
-              <label class="form-check-label" for="dairy_free">Dairy-free</label>
-            </div>
-          </div>
+          {% with picker_id="add-dietary-tags", selected_tag_ids=[], helper_text="Search or scroll to add curated dietary notes. Only hosts can manage this list." %}
+            {% include "partials/tag_picker.html" %}
+          {% endwith %}
           <div class="mb-4">
             <label for="notes" class="form-label">Extra notes</label>
             <textarea class="form-control" id="notes" name="notes" rows="3" placeholder="Goes great with crunchy bread"></textarea>
