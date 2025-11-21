@@ -1,9 +1,177 @@
+:root {
+  --ctp-base: #eff1f5;
+  --ctp-mantle: #e6e9ef;
+  --ctp-crust: #dce0e8;
+  --ctp-surface0: #ccd0da;
+  --ctp-surface1: #bcc0cc;
+  --ctp-surface2: #acb0be;
+  --ctp-text: #4c4f69;
+  --ctp-subtext: #6c6f85;
+  --ctp-blue: #1e66f5;
+  --ctp-lavender: #7287fd;
+  --ctp-pink: #ea76cb;
+  --ctp-teal: #179299;
+  --ctp-green: #40a02b;
+  --ctp-yellow: #df8e1d;
+  --ctp-red: #d20f39;
+  --ctp-sky: #04a5e5;
+  --bs-body-font-family: "Space Grotesk", "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --bs-body-bg: var(--ctp-base);
+  --bs-body-color: var(--ctp-text);
+  --bs-border-color: var(--ctp-crust);
+  --bs-primary: var(--ctp-lavender);
+  --bs-primary-rgb: 114, 135, 253;
+  --bs-secondary: var(--ctp-subtext);
+  --bs-success: var(--ctp-green);
+  --bs-info: var(--ctp-sky);
+  --bs-warning: var(--ctp-yellow);
+  --bs-danger: var(--ctp-red);
+  --bs-light: var(--ctp-mantle);
+  --bs-dark: var(--ctp-text);
+  --bs-link-color: var(--ctp-blue);
+  --bs-link-hover-color: #2746d1;
+  --shadow-soft: 0 20px 60px rgba(114, 135, 253, 0.18);
+  --card-border: rgba(76, 79, 105, 0.12);
+}
+
 body {
-  font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: var(--bs-body-font-family);
+  color: var(--ctp-text);
+}
+
+.app-body {
+  background: radial-gradient(circle at 0% 0%, rgba(234, 118, 203, 0.18), transparent 35%),
+    radial-gradient(circle at 100% 10%, rgba(114, 135, 253, 0.16), transparent 32%),
+    radial-gradient(circle at 75% 55%, rgba(64, 160, 43, 0.12), transparent 28%),
+    var(--ctp-base);
+  position: relative;
+  overflow-x: hidden;
+}
+
+.app-body::before,
+.app-body::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(circle at 20% 60%, rgba(4, 165, 229, 0.14), transparent 35%),
+    radial-gradient(circle at 85% 80%, rgba(114, 135, 253, 0.12), transparent 35%);
+  filter: blur(20px);
+  z-index: 0;
+}
+
+main,
+nav,
+footer {
+  position: relative;
+  z-index: 1;
+}
+
+.app-navbar {
+  margin: 1.5rem auto 0.75rem;
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(18px);
+  border-radius: 16px;
+  border: 1px solid rgba(114, 135, 253, 0.12);
+  padding: 0.85rem 0;
+}
+
+.navbar-brand {
+  letter-spacing: 0.02em;
+}
+
+.brand-glow {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, #ffffff, #7287fd);
+  box-shadow: 0 0 24px rgba(114, 135, 253, 0.6);
+  display: inline-block;
+}
+
+.btn {
+  border-radius: 999px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #8caaee, var(--ctp-lavender));
+  border: none;
+  box-shadow: 0 8px 25px rgba(114, 135, 253, 0.32);
+}
+
+.btn-primary:hover,
+.btn-primary:focus {
+  background: linear-gradient(135deg, #9db8ff, #7c8eff);
+  box-shadow: 0 10px 30px rgba(114, 135, 253, 0.38);
+}
+
+.btn-outline-primary {
+  border-color: rgba(114, 135, 253, 0.5);
+  color: var(--ctp-lavender);
+}
+
+.btn-outline-primary:hover,
+.btn-outline-primary:focus {
+  background: rgba(114, 135, 253, 0.12);
+  color: var(--ctp-lavender);
+  border-color: rgba(114, 135, 253, 0.65);
+}
+
+.navbar .btn + .btn {
+  margin-left: 0.35rem;
+}
+
+.card,
+.table-responsive,
+.splash-card {
+  border-radius: 18px;
+  border: 1px solid var(--card-border);
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: var(--shadow-soft);
+}
+
+.card {
+  backdrop-filter: blur(8px);
+}
+
+.table thead {
+  background-color: rgba(114, 135, 253, 0.08);
+}
+
+.table > :not(caption) > * > * {
+  border-color: var(--ctp-surface1);
+}
+
+.table-responsive {
+  border: 1px solid var(--card-border);
+}
+
+.form-control,
+.form-select {
+  border-radius: 12px;
+  background-color: rgba(255, 255, 255, 0.9);
+  border: 1px solid var(--ctp-surface0);
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.form-control:focus,
+.form-select:focus {
+  box-shadow: 0 0 0 0.2rem rgba(114, 135, 253, 0.25);
+  border-color: rgba(114, 135, 253, 0.6);
+}
+
+.form-text {
+  color: var(--ctp-subtext);
+}
+
+.text-muted {
+  color: var(--ctp-subtext) !important;
 }
 
 .splash-card {
-  border: 2px dashed rgba(13, 110, 253, 0.3);
+  border: 1px dashed rgba(114, 135, 253, 0.35);
 }
 
 .htmx-indicator {
@@ -15,10 +183,10 @@ body {
 }
 
 .tag-picker-group {
-  border: 1px solid #f1f3f5;
-  border-radius: 0.75rem;
-  padding: 0.75rem;
-  background-color: #fff;
+  border: 1px solid rgba(114, 135, 253, 0.2);
+  border-radius: 0.9rem;
+  padding: 0.9rem;
+  background: linear-gradient(145deg, rgba(114, 135, 253, 0.08), rgba(23, 146, 153, 0.05));
 }
 
 .tag-picker-group p {
@@ -29,7 +197,7 @@ body {
   border-radius: 999px;
   padding: 0.2rem 0.75rem;
   font-size: 0.85rem;
-  font-weight: 500;
+  font-weight: 600;
   border: 1px solid transparent;
   display: inline-flex;
   align-items: center;
@@ -41,45 +209,45 @@ body {
 }
 
 .tag-pill-patterns {
-  background-color: #e7f6ec;
-  border-color: #c8ebd6;
-  color: #0f5132;
+  background-color: rgba(23, 146, 153, 0.12);
+  border-color: rgba(23, 146, 153, 0.35);
+  color: #0f5f63;
 }
 
 .tag-pill-avoidances {
-  background-color: #e3fafc;
-  border-color: #b8eef4;
-  color: #055160;
+  background-color: rgba(223, 142, 29, 0.12);
+  border-color: rgba(223, 142, 29, 0.4);
+  color: #8b560f;
 }
 
 .tag-pill-prep {
-  background-color: #fff4e6;
-  border-color: #ffd7aa;
-  color: #8a4700;
+  background-color: rgba(114, 135, 253, 0.12);
+  border-color: rgba(114, 135, 253, 0.35);
+  color: #3e4685;
 }
 
 .tag-pill-additives {
-  background-color: #f3e8ff;
-  border-color: #d6bcfa;
-  color: #5f249f;
+  background-color: rgba(234, 118, 203, 0.12);
+  border-color: rgba(234, 118, 203, 0.4);
+  color: #8b3f75;
 }
 
 .tag-pill-spice {
-  background-color: #fdecef;
-  border-color: #f8cdd6;
-  color: #812041;
+  background-color: rgba(210, 15, 57, 0.12);
+  border-color: rgba(210, 15, 57, 0.3);
+  color: #7a0f28;
 }
 
 .tag-pill-logistics {
-  background-color: #e7f1ff;
-  border-color: #c5dbff;
-  color: #0b3d91;
+  background-color: rgba(4, 165, 229, 0.12);
+  border-color: rgba(4, 165, 229, 0.4);
+  color: #0e5674;
 }
 
 .tag-pill-generic {
-  background-color: #f1f3f5;
-  border-color: #dee2e6;
-  color: #495057;
+  background-color: rgba(76, 79, 105, 0.08);
+  border-color: rgba(76, 79, 105, 0.2);
+  color: #4c4f69;
 }
 
 .tag-picker-option .btn.tag-pill {
@@ -96,7 +264,7 @@ body {
 }
 
 .tag-picker-option .btn-check:focus + .tag-pill {
-  box-shadow: 0 0 0 0.15rem rgba(13, 110, 253, 0.2);
+  box-shadow: 0 0 0 0.15rem rgba(114, 135, 253, 0.2);
 }
 
 .tag-admin-chip {

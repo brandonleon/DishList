@@ -18,6 +18,11 @@ uv run main.py  # local dev (reload enabled)
 uv run uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
+If your environment disallows file-system watchers (common in sandboxes/CI), set
+`DISHLIST_RELOAD=0` to skip live reload or run the app directly with
+`.venv/bin/python main.py`. If uv cannot read `~/.cache`, point it at the
+project cache with `UV_CACHE_DIR=.uv-cache`.
+
 Visit <http://127.0.0.1:8000/> to see the potluck board. Submissions are stored in `data/dishlist.db` (SQLite).
 
 ### Docker
