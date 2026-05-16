@@ -1,13 +1,17 @@
 {% extends "base.html" %}
 
+{% block nav_actions %}
+<a class="btn btn-outline-secondary px-3" href="{{ url_for('event_home', slug=event.slug) }}">Back to board</a>
+{% endblock %}
+
 {% block content %}
 <div class="row justify-content-center">
   <div class="col-lg-8">
     <div class="card shadow-sm">
       <div class="card-body p-4">
-        <p class="text-uppercase small text-muted mb-1">Share your dish</p>
+        <p class="text-uppercase small text-muted mb-1">{{ event.name }}</p>
         <h1 class="h3 mb-4">Tell everyone what you're bringing</h1>
-        <form method="post" action="{{ url_for('add_submission') }}">
+        <form method="post" action="{{ url_for('event_add_submission', slug=event.slug) }}">
           <div class="mb-3">
             <label for="contributor" class="form-label">Your name</label>
             <input type="text" class="form-control" id="contributor" name="contributor" placeholder="Alex Chef" required />
@@ -37,7 +41,7 @@
             <textarea class="form-control" id="notes" name="notes" rows="3" placeholder="Goes great with crunchy bread"></textarea>
           </div>
           <div class="d-flex justify-content-between align-items-center">
-            <a class="btn btn-outline-secondary" href="{{ url_for('home') }}">Back to list</a>
+            <a class="btn btn-outline-secondary" href="{{ url_for('event_home', slug=event.slug) }}">Back to board</a>
             <button type="submit" class="btn btn-primary btn-lg">Add to the potluck</button>
           </div>
         </form>

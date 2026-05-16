@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block nav_actions %}
+<a class="btn btn-outline-secondary px-3" href="{{ url_for('manage_event', token=event.management_token) }}">Back to manage</a>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-8">
+    <div class="card shadow-sm">
+      <div class="card-body p-4">
+        <p class="text-uppercase text-muted small mb-1">Edit dish — {{ event.name }}</p>
+        <h1 class="h4 mb-4">Update {{ dish.dish_name }}</h1>
+        <form method="post" action="{{ url_for('manage_edit_dish_submit', token=event.management_token, dish_id=dish.id) }}">
+          <div class="mb-3">
+            <label for="contributor" class="form-label">Contributor</label>
+            <input type="text" class="form-control" id="contributor" name="contributor" value="{{ dish.contributor }}" required />
+          </div>
+          <div class="mb-3">
+            <label for="dish_name" class="form-label">Dish name</label>
+            <input type="text" class="form-control" id="dish_name" name="dish_name" value="{{ dish.dish_name }}" required />
+          </div>
+          <div class="mb-3">
+            <label for="dish_type" class="form-label">Dish type</label>
+            <select class="form-select" id="dish_type" name="dish_type" required>
+              {% for dish_type in dish_types %}
+                <option value="{{ dish_type }}" {% if dish_type == dish.dish_type %}selected{% endif %}>{{ dish_type }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-3">
+            <label for="allergens" class="form-label">Allergens</label>
+            <textarea class="form-control" id="allergens" name="allergens" rows="2">{{ (dish.allergens or []) | join(', ') }}</textarea>
+          </div>
+          {% with picker_id="edit-dietary-tags", selected_tag_ids=dish.tag_ids, helper_text="Search or scroll to update which tags belong to this dish." %}
+            {% include "partials/tag_picker.html" %}
+          {% endwith %}
+          <div class="mb-4">
+            <label for="notes" class="form-label">Notes</label>
+            <textarea class="form-control" id="notes" name="notes" rows="3">{{ dish.notes or '' }}</textarea>
+          </div>
+          <div class="d-flex justify-content-between align-items-center">
+            <a class="btn btn-outline-secondary" href="{{ url_for('manage_event', token=event.management_token) }}">Cancel</a>
+            <button type="submit" class="btn btn-primary">Save changes</button>
+          </div>
+        </form>
+        <form method="post"
+              action="{{ url_for('manage_delete_dish', token=event.management_token, dish_id=dish.id) }}"
+              onsubmit="return confirm('Delete this dish?');">
+          <div class="d-flex justify-content-end mt-3">
+            <button type="submit" class="btn btn-outline-danger">Delete dish</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

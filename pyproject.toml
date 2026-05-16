@@ -1,12 +1,14 @@
 [project]
 name = "dishlist"
-version = "0.2.1"
+version = "0.3.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "fastapi",
+    "fastapi>=0.115,<1",
     "uvicorn",
     "jinja2",
     "python-multipart",
+    "pydantic>=2.10,<3",
+    "starlette<1.0",
 ]

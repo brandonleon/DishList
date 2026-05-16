@@ -2,46 +2,100 @@
 
 {% block content %}
 <div class="row justify-content-center">
-  <div class="col-lg-8">
+  <div class="col-lg-10">
     <div class="alert alert-warning d-flex align-items-center" role="alert">
-      <div>
-        <strong>Heads up:</strong> This control room is only for trusted hosts. Keep this URL close.
+      <strong>System admin</strong>&nbsp;— This control room is only for trusted administrators. Keep this URL close.
+    </div>
+
+    <!-- ── All events ──────────────────────────────────────────── -->
+    <div class="card shadow-sm mb-4">
+      <div class="card-body p-4">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <div>
+            <h1 class="h5 mb-0 fw-semibold">Events</h1>
+            <p class="text-muted small mb-0">{{ events | length }} event{{ 's' if events | length != 1 else '' }}</p>
+          </div>
+          <a class="btn btn-primary btn-sm" href="{{ url_for('create_event_form') }}">New Event</a>
+        </div>
+        {% if events %}
+          <div class="table-responsive">
+            <table class="table align-middle">
+              <thead class="table-light">
+                <tr>
+                  <th>Name</th>
+                  <th>Date</th>
+                  <th>Status</th>
+                  <th>Created</th>
+                  <th class="text-end">Links</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for event in events %}
+                  <tr>
+                    <td class="fw-semibold">{{ event.name }}</td>
+                    <td class="text-muted">{{ event.event_date or '—' }}</td>
+                    <td>
+                      {% if event.is_active %}
+                        <span class="badge bg-success-subtle text-success">Open</span>
+                      {% else %}
+                        <span class="badge bg-secondary-subtle text-secondary">Closed</span>
+                      {% endif %}
+                    </td>
+                    <td class="text-muted small text-nowrap">{{ event.created_at | format_dish_timestamp }}</td>
+                    <td>
+                      <div class="d-flex justify-content-end gap-2">
+                        <a class="btn btn-sm btn-outline-primary"
+                           href="{{ url_for('event_home', slug=event.slug) }}" target="_blank">View</a>
+                        <a class="btn btn-sm btn-outline-secondary"
+                           href="{{ url_for('manage_event', token=event.management_token) }}">Manage</a>
+                        <form method="post"
+                              action="{{ url_for('admin_delete_event', event_id=event.id) }}"
+                              onsubmit="return confirm('Delete &quot;{{ event.name }}&quot; and all its dishes?');">
+                          <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+                        </form>
+                      </div>
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <p class="text-muted mb-0">No events yet. <a href="{{ url_for('create_event_form') }}">Create the first one.</a></p>
+        {% endif %}
       </div>
     </div>
-    <div class="card shadow-sm">
+
+    <!-- ── Global settings ────────────────────────────────────── -->
+    <div class="card shadow-sm mb-4">
       <div class="card-body p-4">
-        <h1 class="h4 mb-4">Potluck configuration</h1>
+        <h2 class="h5 mb-3 fw-semibold">Global defaults</h2>
         <form method="post" action="{{ url_for('update_admin_settings') }}">
           <div class="mb-4">
-            <label for="dish_types_input" class="form-label">Dish types</label>
-            <textarea class="form-control" id="dish_types_input" name="dish_types_input" rows="5">{% for dish in config.dish_types %}{{ dish }}
+            <label for="dish_types_input" class="form-label">Default dish categories</label>
+            <textarea class="form-control font-monospace" id="dish_types_input" name="dish_types_input" rows="5">{% for dish in config.dish_types %}{{ dish }}
 {% endfor %}</textarea>
-            <div class="form-text">One dish type per line.</div>
+            <div class="form-text">One category per line. New events start with these as their dish types.</div>
           </div>
           <div class="mb-4">
             <label for="admin_networks_input" class="form-label">Allowed admin networks</label>
-            <textarea class="form-control" id="admin_networks_input" name="admin_networks_input" rows="4">{% for block in config.admin_networks %}{{ block }}
+            <textarea class="form-control font-monospace" id="admin_networks_input" name="admin_networks_input" rows="4">{% for block in config.admin_networks %}{{ block }}
 {% endfor %}</textarea>
-            <div class="form-text">Provide IP addresses or CIDR ranges (e.g. 192.168.1.0/24).</div>
+            <div class="form-text">IP addresses or CIDR ranges (e.g. 192.168.1.0/24), one per line.</div>
           </div>
           <div class="d-flex justify-content-end">
-            <button type="submit" class="btn btn-danger">Save configuration</button>
+            <button type="submit" class="btn btn-danger">Save global settings</button>
           </div>
         </form>
       </div>
     </div>
-  </div>
-</div>
 
-<div class="row mt-4">
-  <div class="col-12">
-    <div class="card shadow-sm">
+    <!-- ── Tag library ────────────────────────────────────────── -->
+    <div class="card shadow-sm mb-4">
       <div class="card-body p-4">
-        <div class="d-flex flex-column flex-md-row justify-content-between align-items-start gap-2 mb-3">
-          <div>
-            <h2 class="h5 mb-1">Dietary tag library</h2>
-            <p class="text-muted small mb-0">Curate the Dietary Notes guests can pick from.</p>
-          </div>
+        <div class="mb-3">
+          <h2 class="h5 mb-1 fw-semibold">Dietary tag library</h2>
+          <p class="text-muted small mb-0">Curate the dietary notes guests can pick from across all events.</p>
         </div>
         {% if tag_success %}
           <div class="alert alert-success" role="alert">{{ tag_success }}</div>
@@ -88,97 +142,16 @@
                       </form>
                     {% endfor %}
                   </div>
-                {% else %}
-                  <p class="text-muted small mb-0">No tags in this category yet.</p>
                 {% endif %}
               </div>
             {% endfor %}
           </div>
         {% else %}
-          <p class="text-muted mb-0">No tags are configured yet.</p>
+          <p class="text-muted mb-0">No tags configured yet.</p>
         {% endif %}
       </div>
     </div>
-  </div>
-</div>
 
-<div class="row mt-4">
-  <div class="col-12">
-    <div class="card shadow-sm">
-      <div class="card-body p-4">
-        <div class="d-flex flex-column flex-md-row justify-content-between align-items-start gap-2 mb-3">
-          <div>
-            <h2 class="h5 mb-1">Manage dishes</h2>
-            <p class="text-muted small mb-0">Edit, delete, or nudge contributors without leaving admin.</p>
-          </div>
-          <a class="btn btn-outline-primary btn-sm" href="{{ url_for('add_form') }}">Add new dish</a>
-        </div>
-        {% if dishes %}
-          <div class="table-responsive">
-            <table class="table align-middle">
-              <thead class="table-light">
-                <tr>
-                  <th>Dish</th>
-                  <th>Type</th>
-                  <th>Contributor</th>
-                  <th>Allergens</th>
-                  <th>Dietary</th>
-                  <th>Notes</th>
-                  <th>Added</th>
-                  <th class="text-end">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for dish in dishes %}
-                  <tr>
-                    <td class="fw-semibold">{{ dish.dish_name }}</td>
-                    <td>{{ dish.dish_type }}</td>
-                    <td>{{ dish.contributor }}</td>
-                    <td>
-                      {% if dish.allergens %}
-                        {{ dish.allergens | join(', ') }}
-                      {% else %}
-                        <span class="text-muted">None</span>
-                      {% endif %}
-                    </td>
-                    <td>
-                      {% set tags = dish.tags or [] %}
-                      {% if tags %}
-                        <div class="d-flex flex-wrap gap-1">
-                          {% for tag in tags %}
-                            <span class="badge tag-pill {{ tag.category | tag_category_class }}">{{ tag.name }}</span>
-                          {% endfor %}
-                        </div>
-                      {% elif dish.dietary_flags %}
-                        <div class="d-flex flex-wrap gap-1">
-                          {% for flag in dish.dietary_flags %}
-                            <span class="badge rounded-pill {{ flag | dietary_badge_class }}">{{ flag }}</span>
-                          {% endfor %}
-                        </div>
-                      {% else %}
-                        <span class="text-muted">None</span>
-                      {% endif %}
-                    </td>
-                    <td>{{ dish.notes or '—' }}</td>
-                    <td class="text-nowrap">{{ dish.created_at | format_dish_timestamp }}</td>
-                    <td>
-                      <div class="d-flex justify-content-end gap-2">
-                        <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('edit_dish_form', dish_id=dish.id) }}">Edit</a>
-                        <form method="post" action="{{ url_for('delete_dish_action', dish_id=dish.id) }}" onsubmit="return confirm('Delete this dish?');">
-                          <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
-                        </form>
-                      </div>
-                    </td>
-                  </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-        {% else %}
-          <p class="mb-0 text-muted">No dishes to manage yet. Encourage guests to add their plans.</p>
-        {% endif %}
-      </div>
-    </div>
   </div>
 </div>
 {% endblock %}

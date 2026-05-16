@@ -1,0 +1,187 @@
+{% extends "base.html" %}
+
+{% block nav_actions %}
+<a class="btn btn-outline-secondary px-3" href="{{ url_for('landing') }}">Home</a>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-8">
+    <div class="card shadow-sm">
+      <div class="card-body p-4 p-lg-5">
+        <p class="text-uppercase small text-muted mb-1">New potluck</p>
+        <h1 class="h3 mb-4">Create an Event</h1>
+
+        <form method="post" action="{{ url_for('create_event_submit') }}" id="create-event-form">
+
+          <!-- ── Event details ───────────────────────────────────── -->
+          <div class="mb-3">
+            <label for="name" class="form-label fw-semibold">Event name <span class="text-danger">*</span></label>
+            <input
+              type="text" class="form-control form-control-lg" id="name" name="name"
+              placeholder="Friendsgiving 2025" required maxlength="120"
+              autocomplete="off"
+            />
+          </div>
+
+          <div class="row g-3 mb-3">
+            <div class="col-md-6">
+              <label for="event_date" class="form-label">Date</label>
+              <input type="date" class="form-control" id="event_date" name="event_date" />
+            </div>
+            <div class="col-md-6">
+              <label for="host_name" class="form-label">Host / household name</label>
+              <input
+                type="text" class="form-control" id="host_name" name="host_name"
+                placeholder="The House" maxlength="80"
+              />
+              <div class="form-text">How your contributions appear on the board.</div>
+            </div>
+          </div>
+
+          <div class="mb-4">
+            <label for="description" class="form-label">Description</label>
+            <textarea
+              class="form-control" id="description" name="description" rows="2"
+              placeholder="Bring your favorite dish to celebrate the season..."
+            ></textarea>
+          </div>
+
+          <!-- ── Event URL ──────────────────────────────────────── -->
+          <div class="mb-4 p-3 rounded-3 border bg-light">
+            <h2 class="h6 mb-2 fw-semibold">Your event URL</h2>
+            <p class="small mb-2 text-secondary" id="slug-preview">Enter an event name above to preview your link.</p>
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="use_random_slug" name="use_random_slug" value="1" />
+              <label class="form-check-label small" for="use_random_slug">
+                Use a fully random URL instead <span class="text-muted">(more private — harder to guess)</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- ── Dish categories ────────────────────────────────── -->
+          <div class="mb-4">
+            <label for="dish_types_input" class="form-label fw-semibold">Dish categories <span class="text-danger">*</span></label>
+            <textarea
+              class="form-control font-monospace" id="dish_types_input" name="dish_types_input" rows="5"
+            >{{ default_dish_types | join('\n') }}</textarea>
+            <div class="form-text">One category per line. Guests pick from this list when adding a dish.</div>
+          </div>
+
+          <!-- ── Host contributions ─────────────────────────────── -->
+          <div class="mb-4">
+            <h2 class="h5 mb-1 fw-semibold">What is the house contributing?</h2>
+            <p class="text-muted small mb-3">
+              These will appear pinned at the top of your event board so guests know what's already covered.
+            </p>
+            <div id="host-items-container" class="mb-3"></div>
+            <button type="button" class="btn btn-outline-secondary btn-sm" id="add-host-item-btn">
+              + Add an item
+            </button>
+          </div>
+
+          <hr class="my-4" />
+
+          <div class="d-flex justify-content-between align-items-center">
+            <a class="btn btn-outline-secondary" href="{{ url_for('landing') }}">Cancel</a>
+            <button type="submit" class="btn btn-primary btn-lg px-4">Create Event</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  // ── Slug preview ───────────────────────────────────────────────
+  const nameInput = document.getElementById('name');
+  const slugPreview = document.getElementById('slug-preview');
+  const randomCheck = document.getElementById('use_random_slug');
+
+  function slugify(text) {
+    return text.toLowerCase()
+      .replace(/[^\w\s-]/g, '')
+      .replace(/[\s_-]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .substring(0, 40);
+  }
+
+  function updateSlugPreview() {
+    if (randomCheck.checked) {
+      slugPreview.textContent = 'Your event URL will use a fully random code (generated on creation).';
+      return;
+    }
+    const name = nameInput.value.trim();
+    if (!name) {
+      slugPreview.textContent = 'Enter an event name above to preview your link.';
+      return;
+    }
+    const slug = slugify(name);
+    slugPreview.innerHTML = `Preview: <code>/e/${slug}-xxxx</code> <span class="text-muted">(a short random suffix keeps it unique)</span>`;
+  }
+
+  nameInput.addEventListener('input', updateSlugPreview);
+  randomCheck.addEventListener('change', updateSlugPreview);
+
+  // ── Dish type selects for host items ───────────────────────────
+  const dishTypesTextarea = document.getElementById('dish_types_input');
+
+  function getDishTypes() {
+    return dishTypesTextarea.value
+      .split('\n')
+      .map(s => s.trim())
+      .filter(s => s.length > 0);
+  }
+
+  function buildSelectOptions(currentValue) {
+    return getDishTypes()
+      .map(t => `<option value="${t}"${t === currentValue ? ' selected' : ''}>${t}</option>`)
+      .join('');
+  }
+
+  function rebuildAllTypeSelects() {
+    document.querySelectorAll('.host-item-type-select').forEach(select => {
+      const current = select.value;
+      select.innerHTML = buildSelectOptions(current);
+    });
+  }
+
+  dishTypesTextarea.addEventListener('change', rebuildAllTypeSelects);
+  dishTypesTextarea.addEventListener('blur', rebuildAllTypeSelects);
+
+  // ── Host item rows ─────────────────────────────────────────────
+  const container = document.getElementById('host-items-container');
+  let rowIndex = 0;
+
+  document.getElementById('add-host-item-btn').addEventListener('click', function () {
+    rowIndex++;
+    const div = document.createElement('div');
+    div.className = 'row g-2 mb-2 align-items-end host-item-row';
+    div.innerHTML = `
+      <div class="col-12 col-md-5">
+        <label class="form-label small">Dish name</label>
+        <input type="text" class="form-control form-control-sm" name="host_item_names"
+               placeholder="e.g., Turkey, Cider" maxlength="120" />
+      </div>
+      <div class="col-8 col-md-4">
+        <label class="form-label small">Category</label>
+        <select class="form-select form-select-sm host-item-type-select" name="host_item_types">
+          ${buildSelectOptions('')}
+        </select>
+      </div>
+      <div class="col-8 col-md-2">
+        <label class="form-label small">Notes</label>
+        <input type="text" class="form-control form-control-sm" name="host_item_notes"
+               placeholder="Optional" />
+      </div>
+      <div class="col-4 col-md-1 d-flex align-items-end pb-1">
+        <button type="button" class="btn btn-outline-danger btn-sm w-100"
+                onclick="this.closest('.host-item-row').remove()">✕</button>
+      </div>
+    `;
+    container.appendChild(div);
+  });
+</script>
+{% endblock %}
