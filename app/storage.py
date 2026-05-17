@@ -891,8 +891,13 @@ def _bulk_insert_config_entries(conn: sqlite3.Connection, category: str, values:
 
 def _latest_updated_at(rows: list) -> datetime:
     if not rows:
-        return datetime.utcfromtimestamp(0)
-    return max(datetime.fromisoformat(row["updated_at"]) for row in rows)
+        return datetime.fromtimestamp(0, tz=timezone.utc)
+    def _parse(ts: str) -> datetime:
+        dt = datetime.fromisoformat(ts)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    return max(_parse(row["updated_at"]) for row in rows)
 
 
 # ── Seeding ────────────────────────────────────────────────────────────────────
