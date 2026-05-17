@@ -1,12 +1,39 @@
 [project]
 name = "dishlist"
-version = "0.2.1"
-description = "Add your description here"
+version = "0.4.0"
+description = "Self-hosted potluck planner"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "fastapi",
+    "fastapi>=0.115,<1",
     "uvicorn",
     "jinja2",
     "python-multipart",
+    "pydantic>=2.10,<3",
+    "starlette<1.0",
+    "click>=8.3.3",
 ]
+
+[project.scripts]
+dishlist = "app.cli:cli"
+
+[tool.uv]
+package = true
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=9.0.3",
+    "pytest-cov>=7.1.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --tb=short"
+
+[tool.coverage.run]
+source = ["app"]
+omit = ["app/cli.py"]

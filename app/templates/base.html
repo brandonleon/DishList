@@ -16,18 +16,17 @@
       integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
       crossorigin="anonymous"
     />
-    <link rel="stylesheet" href="{{ url_for('static', path='styles.css') }}" />
+    <link rel="stylesheet" href="{{ url_for('static', path='styles.css') }}?v={{ app_version }}" />
   </head>
   <body class="app-body min-vh-100 d-flex flex-column">
     <nav class="navbar navbar-expand-lg app-navbar shadow-sm">
       <div class="container">
-        <span class="navbar-brand fw-semibold d-flex align-items-center gap-2">
+        <a class="navbar-brand fw-semibold d-flex align-items-center gap-2 text-decoration-none" href="{{ url_for('landing') }}">
           <span class="brand-glow"></span>
           DishList
-        </span>
+        </a>
         <div class="d-flex gap-2">
-          <a class="btn btn-outline-primary px-3" href="{{ url_for('home') }}">Potluck Table</a>
-          <a class="btn btn-primary px-3" href="{{ url_for('add_form') }}">Add a Dish</a>
+          {% block nav_actions %}{% endblock %}
         </div>
       </div>
     </nav>
@@ -55,6 +54,7 @@
       integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz"
       crossorigin="anonymous"
     ></script>
-    <script src="{{ url_for('static', path='tag-picker.js') }}"></script>
+    <script src="{{ url_for('static', path='tag-picker.js') }}?v={{ app_version }}"></script>
+    {% block extra_js %}{% endblock %}
   </body>
 </html>

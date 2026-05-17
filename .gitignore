@@ -9,5 +9,6 @@ wheels/
 # Virtual environments
 .venv
 
-# Local databases
+# Runtime data (generated on first startup)
 data/*.db
+data/config.json

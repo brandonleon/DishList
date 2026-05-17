@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional, Tuple
 
@@ -26,6 +26,10 @@ class AppConfig(BaseModel):
         ]
     )
     admin_networks: List[str] = Field(default_factory=lambda: ["127.0.0.1/32"])
+    # False by default — use `dishlist admin web enable` to turn on.
+    # Migration: existing config.json files without this key and with custom
+    # networks are treated as enabled to preserve prior behaviour.
+    web_admin_enabled: bool = False
 
 
 def _ensure_data_dir() -> None:
@@ -86,6 +90,12 @@ def _load_config_from_file() -> Optional[AppConfig]:
 
     with CONFIG_PATH.open("r", encoding="utf-8") as fp:
         data = json.load(fp)
+
+    # Migration: if an existing config has networks but no web_admin_enabled
+    # key, preserve the previous always-on behaviour.
+    if "web_admin_enabled" not in data and data.get("admin_networks"):
+        data["web_admin_enabled"] = True
+
     return AppConfig(**data)
 
 
@@ -97,7 +107,7 @@ def _write_config_to_file(config: AppConfig) -> None:
 def _get_file_updated_at() -> Optional[datetime]:
     if not CONFIG_PATH.exists():
         return None
-    return datetime.fromtimestamp(CONFIG_PATH.stat().st_mtime)
+    return datetime.fromtimestamp(CONFIG_PATH.stat().st_mtime, tz=timezone.utc)
 
 
 def _load_config_from_db() -> Optional[Tuple[AppConfig, datetime]]:

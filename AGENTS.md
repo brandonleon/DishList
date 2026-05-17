@@ -3,6 +3,21 @@
 These agents describe how we operate and maintain DishList so everyone knows who
 does what.
 
+## Docs Build
+
+Whenever `docs/index.md` is updated, run the build script to regenerate the
+rendered HTML:
+
+```bash
+uv run docs/build.py
+```
+
+This produces `docs/index.html` from the Markdown source and the
+`docs/_template.html` layout. Always commit both `index.md` **and**
+`index.html` together.
+
+---
+
 ## Potluck Host Agent
 
 - Owns the guest-facing experience: homepage, submission form, clever empty state,
@@ -14,13 +29,13 @@ does what.
 ### Host Playbook
 
 1. Run `uv sync` when dependencies change or after pulling from main.
-2. Use `uv run python main.py` for manual QA; stop the server with `Ctrl+C`.
+2. Use `uv run dishlist serve` for manual QA; stop the server with `Ctrl+C`.
 3. Update `app/templates/` or `app/static/` as needed, then refresh the browser to
    confirm.
 
 ## Admin Guardian Agent
 
-- Protects `/pantry-admin` by maintaining the IP allowlist in `data/config.json`.
+- Manages the IP allowlist and web admin toggle via `dishlist admin` CLI.
 - Curates the list of dish types so submitters always have relevant options.
 - Audits allergen labeling and dietary flags to ensure clarity for guests with
   restrictions.
@@ -28,8 +43,9 @@ does what.
 
 ### Admin Playbook
 
-1. Confirm your IP is allowlisted before sharing the admin URL.
-2. Adjust dish types/IPs in the admin UI; the JSON file updates automatically.
+1. Web admin is **disabled by default**. Enable it with:
+   `dishlist admin web enable --network <your-ip>`
+2. Manage dish types, networks, and tags via `dishlist admin` subcommands.
 3. Commit config changes that should persist and document the motivation.
 
 ## Data Steward Agent

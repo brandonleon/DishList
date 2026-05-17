@@ -3,47 +3,16 @@
     <div class="col">
       <div class="card h-100 shadow-sm">
         <div class="card-body">
-          <div class="d-flex justify-content-between align-items-center mb-3">
+          <div class="d-flex justify-content-between align-items-start mb-2">
             <div>
               <p class="text-uppercase small text-muted mb-1">{{ dish.dish_type }}</p>
               <h3 class="h5 mb-0">{{ dish.dish_name }}</h3>
             </div>
-            <span class="badge bg-primary-subtle text-primary">{{ dish.contributor }}</span>
+            <span class="badge bg-primary-subtle text-primary flex-shrink-0 ms-2">{{ dish.contributor }}</span>
           </div>
           {% if dish.notes %}
-            <p class="mb-3">{{ dish.notes }}</p>
+            <p class="small text-secondary mb-0 mt-2">{{ dish.notes }}</p>
           {% endif %}
-          <div class="mb-3">
-            <p class="fw-semibold mb-1">Allergens</p>
-            {% if dish.allergens %}
-              <ul class="list-unstyled small mb-0">
-                {% for allergen in dish.allergens %}
-                  <li>• {{ allergen }}</li>
-                {% endfor %}
-              </ul>
-            {% else %}
-              <p class="text-muted small mb-0">No allergens reported</p>
-            {% endif %}
-          </div>
-          <div>
-            <p class="fw-semibold mb-1">Dietary Notes</p>
-            {% set tags = dish.tags or [] %}
-            {% if tags %}
-              <div class="d-flex flex-wrap gap-2">
-                {% for tag in tags %}
-                  <span class="badge tag-pill {{ tag.category | tag_category_class }}">{{ tag.name }}</span>
-                {% endfor %}
-              </div>
-            {% elif dish.dietary_flags %}
-              <div class="d-flex flex-wrap gap-2">
-                {% for flag in dish.dietary_flags %}
-                  <span class="badge rounded-pill {{ flag | dietary_badge_class }}">{{ flag }}</span>
-                {% endfor %}
-              </div>
-            {% else %}
-              <p class="text-muted small mb-0">No special flags</p>
-            {% endif %}
-          </div>
         </div>
         <div class="card-footer text-muted small">
           Added {{ dish.created_at | format_dish_timestamp }}
