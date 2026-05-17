@@ -55,6 +55,9 @@ DEFAULT_TAG_GROUPS = {
         "Contains sesame",
         "Contains shellfish",
         "Contains fish",
+        "Contains coconut",
+        "Contains corn",
+        "Contains mustard",
     ],
     "Content & serving": [
         "Contains alcohol",
@@ -69,7 +72,83 @@ DEFAULT_TAG_GROUPS = {
         "Reheat: grill",
     ],
 }
+
+# Tags that are hidden by default — surfaced by search or keyword auto-detection
+DEFAULT_HIDDEN_TAG_GROUPS: Dict[str, List[str]] = {
+    "Dietary preferences": [
+        "Gluten-free",
+        "Dairy-free",
+        "Nut-free",
+        "Egg-free",
+        "Keto / Low-carb",
+        "Paleo",
+        "Low-sodium",
+        "Sugar-free",
+    ],
+    "Content & serving": [
+        "Finger food",
+        "Best served warm",
+        "Reheat: air fryer",
+    ],
+}
 _CATEGORY_ORDER_LOOKUP = {category: idx for idx, category in enumerate(TAG_CATEGORY_ORDER)}
+
+# Default auto-detect keywords seeded for each built-in tag.
+# Keys must match tag names in DEFAULT_TAG_GROUPS exactly.
+DEFAULT_TAG_KEYWORDS: Dict[str, List[str]] = {
+    # ── Allergen warnings (visible) ────────────────────────────────────────────
+    "Contains peanuts": ["peanut", "groundnut"],
+    "Contains tree nuts": ["nut", "nuts", "almond", "cashew", "walnut", "pecan",
+                             "hazelnut", "pistachio", "macadamia"],
+    "Contains dairy": ["dairy", "milk", "cream", "cheese", "butter",
+                        "yogurt", "yoghurt", "whey"],
+    "Contains eggs": ["egg", "eggs"],
+    "Contains gluten / wheat": ["gluten", "wheat", "flour"],
+    "Contains soy": ["soy", "tofu", "edamame"],
+    "Contains sesame": ["sesame", "tahini"],
+    "Contains shellfish": ["shellfish", "shrimp", "prawn", "crab", "lobster",
+                             "scallop", "mussel", "oyster", "clam"],
+    "Contains fish": ["fish", "salmon", "tuna", "cod", "anchovy", "anchovies",
+                       "herring", "tilapia", "trout"],
+    "Contains coconut": ["coconut", "coconut milk", "coconut cream",
+                          "coconut oil", "desiccated coconut", "shredded coconut"],
+    "Contains corn": ["corn", "cornstarch", "cornmeal", "polenta", "grits",
+                       "corn syrup", "sweet corn"],
+    "Contains mustard": ["mustard", "dijon", "whole grain mustard"],
+    # ── Content & serving (visible) ────────────────────────────────────────────
+    "Contains alcohol": ["alcohol", "wine", "beer", "whiskey", "whisky",
+                          "vodka", "rum", "brandy", "bourbon", "liqueur"],
+    "Contains pork": ["pork", "bacon", "ham", "prosciutto", "pancetta",
+                       "chorizo", "salami", "lard"],
+    "Spicy": ["spicy", "chili", "chilli", "jalape\u00f1o", "jalapeno",
+               "sriracha", "cayenne", "habanero"],
+    "Kid-friendly": ["for kids", "for children"],
+    "Keep chilled": ["chilled", "refrigerate", "refrigerated"],
+    "Prepared in a GF kitchen": ["gf kitchen", "gluten-free kitchen", "gluten free kitchen"],
+    "Reheat: stovetop": ["stovetop", "stove top", "hob"],
+    "Reheat: oven": ["oven", "bake"],
+    "Reheat: microwave": ["microwave"],
+    "Reheat: grill": ["grill", "bbq", "barbecue", "broil"],
+    # ── Dietary preferences (visible) ─────────────────────────────────────────
+    "Vegan": ["vegan"],
+    "Vegetarian": ["vegetarian", "veggie"],
+    "Pescatarian": ["pescatarian"],
+    "Kosher": ["kosher"],
+    "Halal": ["halal"],
+    # ── Dietary preferences (hidden) ──────────────────────────────────────────
+    "Gluten-free": ["gluten-free", "gluten free", "gf"],
+    "Dairy-free": ["dairy-free", "dairy free"],
+    "Nut-free": ["nut-free", "nut free"],
+    "Egg-free": ["egg-free", "egg free", "no eggs"],
+    "Keto / Low-carb": ["keto", "ketogenic", "low-carb", "low carb", "keto-friendly"],
+    "Paleo": ["paleo"],
+    "Low-sodium": ["low sodium", "low-sodium", "low salt"],
+    "Sugar-free": ["sugar-free", "sugar free", "no sugar", "no added sugar"],
+    # ── Content & serving (hidden) ────────────────────────────────────────────
+    "Finger food": ["finger food", "nibbles", "bites", "bite size", "bite-size"],
+    "Best served warm": ["best served warm", "best warm", "serve warm"],
+    "Reheat: air fryer": ["air fryer", "airfryer"],
+}
 CATEGORY_NORMALIZATION = {
     # Legacy category renames — keeps existing rows tidy on upgrade
     "Vegetarian but not vegan (contains eggs/honey)": "Dietary preferences",
@@ -179,8 +258,26 @@ def init_db() -> None:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL UNIQUE,
                 category TEXT NOT NULL,
-                position INTEGER NOT NULL DEFAULT 0
+                position INTEGER NOT NULL DEFAULT 0,
+                is_hidden INTEGER NOT NULL DEFAULT 0
             )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS tag_keywords (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tag_id INTEGER NOT NULL,
+                keyword TEXT NOT NULL,
+                FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE,
+                UNIQUE (tag_id, keyword)
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_tag_keywords_tag_id
+            ON tag_keywords (tag_id)
             """
         )
         conn.execute(
@@ -206,8 +303,14 @@ def init_db() -> None:
             ON dish_tags (dish_id)
             """
         )
+        # Migrate is_hidden column into existing databases
+        try:
+            conn.execute("ALTER TABLE tags ADD COLUMN is_hidden INTEGER NOT NULL DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
         _seed_or_migrate_config_entries(conn)
         _seed_or_migrate_tags(conn)
+        _seed_or_migrate_keywords(conn)
 
 
 # ── Event helpers ──────────────────────────────────────────────────────────────
@@ -316,7 +419,7 @@ def get_event_by_management_token(token: str) -> Optional[Event]:
 def load_events() -> List[Event]:
     with _get_connection() as conn:
         rows = conn.execute(
-            "SELECT * FROM events ORDER BY datetime(created_at) DESC"
+            "SELECT * FROM events ORDER BY datetime(created_at) DESC, id DESC"
         ).fetchall()
     return [_row_to_event(r) for r in rows]
 
@@ -522,12 +625,59 @@ def delete_dish(dish_id: int) -> None:
 # ── Tag CRUD ───────────────────────────────────────────────────────────────────
 
 
+def _load_keywords_for_tags(conn: sqlite3.Connection, tag_ids: Sequence[int]) -> Dict[int, List[str]]:
+    """Return a mapping of tag_id → list of keywords."""
+    if not tag_ids:
+        return {}
+    placeholders = ",".join("?" for _ in tag_ids)
+    rows = conn.execute(
+        f"SELECT tag_id, keyword FROM tag_keywords WHERE tag_id IN ({placeholders}) ORDER BY tag_id, id",
+        tuple(tag_ids),
+    ).fetchall()
+    mapping: Dict[int, List[str]] = {}
+    for row in rows:
+        mapping.setdefault(row["tag_id"], []).append(row["keyword"])
+    return mapping
+
+
+def _set_tag_keywords_conn(conn: sqlite3.Connection, tag_id: int, keywords: List[str]) -> None:
+    """Replace all keywords for a tag within an existing connection/transaction."""
+    cleaned = [kw.strip().lower() for kw in keywords if kw.strip()]
+    deduped = list(dict.fromkeys(cleaned))
+    conn.execute("DELETE FROM tag_keywords WHERE tag_id = ?", (tag_id,))
+    if deduped:
+        conn.executemany(
+            "INSERT INTO tag_keywords (tag_id, keyword) VALUES (?, ?)",
+            [(tag_id, kw) for kw in deduped],
+        )
+
+
 def load_tags() -> List[Tag]:
     with _get_connection() as conn:
-        rows = conn.execute("SELECT id, name, category, position FROM tags").fetchall()
-    tags = [Tag(id=row["id"], name=row["name"], category=row["category"], position=row["position"]) for row in rows]
+        rows = conn.execute("SELECT id, name, category, position, is_hidden FROM tags").fetchall()
+        tag_ids = [row["id"] for row in rows]
+        kw_map = _load_keywords_for_tags(conn, tag_ids)
+    tags = [
+        Tag(
+            id=row["id"],
+            name=row["name"],
+            category=row["category"],
+            position=row["position"],
+            is_hidden=bool(row["is_hidden"]),
+            keywords=kw_map.get(row["id"], []),
+        )
+        for row in rows
+    ]
     tags.sort(key=_tag_sort_key)
     return tags
+
+
+def get_tag_counts() -> Dict[str, int]:
+    """Return total, visible, and hidden tag counts for summary display."""
+    with _get_connection() as conn:
+        total = conn.execute("SELECT COUNT(*) AS n FROM tags").fetchone()["n"]
+        hidden = conn.execute("SELECT COUNT(*) AS n FROM tags WHERE is_hidden = 1").fetchone()["n"]
+    return {"total": total, "visible": total - hidden, "hidden": hidden}
 
 
 def load_tag_groups() -> List[Tuple[str, List[Tag]]]:
@@ -551,10 +701,21 @@ def get_tags_by_ids(tag_ids: Sequence[int]) -> List[Tag]:
     placeholders = ",".join("?" for _ in tag_ids)
     with _get_connection() as conn:
         rows = conn.execute(
-            f"SELECT id, name, category, position FROM tags WHERE id IN ({placeholders})",
+            f"SELECT id, name, category, position, is_hidden FROM tags WHERE id IN ({placeholders})",
             tuple(tag_ids),
         ).fetchall()
-    tags = [Tag(id=row["id"], name=row["name"], category=row["category"], position=row["position"]) for row in rows]
+        kw_map = _load_keywords_for_tags(conn, [row["id"] for row in rows])
+    tags = [
+        Tag(
+            id=row["id"],
+            name=row["name"],
+            category=row["category"],
+            position=row["position"],
+            is_hidden=bool(row["is_hidden"]),
+            keywords=kw_map.get(row["id"], []),
+        )
+        for row in rows
+    ]
     tags.sort(key=_tag_sort_key)
     return tags
 
@@ -571,7 +732,30 @@ def get_tag_categories() -> List[str]:
     return result
 
 
-def update_tag(tag_id: int, name: str, category: str) -> None:
+def set_tag_keywords(tag_id: int, keywords: List[str]) -> None:
+    """Public helper: replace all keywords for a tag."""
+    with _get_connection() as conn:
+        _set_tag_keywords_conn(conn, tag_id, keywords)
+
+
+def toggle_tag_visibility(tag_id: int) -> bool:
+    """Flip is_hidden for a tag. Returns the new is_hidden value."""
+    with _get_connection() as conn:
+        row = conn.execute("SELECT is_hidden FROM tags WHERE id = ?", (tag_id,)).fetchone()
+        if not row:
+            raise ValueError("Tag not found")
+        new_val = 0 if row["is_hidden"] else 1
+        conn.execute("UPDATE tags SET is_hidden = ? WHERE id = ?", (new_val, tag_id))
+    return bool(new_val)
+
+
+def update_tag(
+    tag_id: int,
+    name: str,
+    category: str,
+    keywords: Optional[List[str]] = None,
+    is_hidden: Optional[bool] = None,
+) -> None:
     cleaned = name.strip()
     cat = category.strip()
     if not cleaned:
@@ -584,10 +768,18 @@ def update_tag(tag_id: int, name: str, category: str) -> None:
             (cleaned, tag_id),
         ).fetchone():
             raise ValueError("A tag with that name already exists")
-        conn.execute(
-            "UPDATE tags SET name = ?, category = ? WHERE id = ?",
-            (cleaned, cat, tag_id),
-        )
+        if is_hidden is None:
+            conn.execute(
+                "UPDATE tags SET name = ?, category = ? WHERE id = ?",
+                (cleaned, cat, tag_id),
+            )
+        else:
+            conn.execute(
+                "UPDATE tags SET name = ?, category = ?, is_hidden = ? WHERE id = ?",
+                (cleaned, cat, 1 if is_hidden else 0, tag_id),
+            )
+        if keywords is not None:
+            _set_tag_keywords_conn(conn, tag_id, keywords)
 
 
 def reset_tags_to_defaults() -> None:
@@ -597,7 +789,12 @@ def reset_tags_to_defaults() -> None:
         _insert_default_tags(conn)
 
 
-def create_tag(name: str, category: str) -> Tag:
+def create_tag(
+    name: str,
+    category: str,
+    keywords: Optional[List[str]] = None,
+    is_hidden: bool = False,
+) -> Tag:
     cleaned_name = name.strip()
     cat = category.strip()
     if not cleaned_name:
@@ -613,11 +810,17 @@ def create_tag(name: str, category: str) -> Tag:
         ).fetchone()
         next_position = row["max_position"] + 1
         cursor = conn.execute(
-            "INSERT INTO tags (name, category, position) VALUES (?, ?, ?)",
-            (cleaned_name, cat, next_position),
+            "INSERT INTO tags (name, category, position, is_hidden) VALUES (?, ?, ?, ?)",
+            (cleaned_name, cat, next_position, 1 if is_hidden else 0),
         )
         tag_id = cursor.lastrowid
-    return Tag(id=tag_id, name=cleaned_name, category=cat, position=next_position)
+        kw_list: List[str] = []
+        if keywords:
+            kw_list = [kw.strip().lower() for kw in keywords if kw.strip()]
+            kw_list = list(dict.fromkeys(kw_list))
+            _set_tag_keywords_conn(conn, tag_id, kw_list)
+    return Tag(id=tag_id, name=cleaned_name, category=cat, position=next_position,
+               keywords=kw_list, is_hidden=is_hidden)
 
 
 def delete_tag(tag_id: int) -> None:
@@ -707,16 +910,81 @@ def _seed_or_migrate_config_entries(conn: sqlite3.Connection) -> None:
 def _seed_or_migrate_tags(conn: sqlite3.Connection) -> None:
     if conn.execute("SELECT COUNT(*) AS count FROM tags").fetchone()["count"] == 0:
         _insert_default_tags(conn)
+    else:
+        _add_missing_default_tags(conn)
     _normalize_existing_tag_categories(conn)
 
 
-def _insert_default_tags(conn: sqlite3.Connection) -> None:
+def _add_missing_default_tags(conn: sqlite3.Connection) -> None:
+    """Add any new default tags that are absent from an existing database."""
+    all_defaults: List[Tuple[str, str, bool]] = []
     for category in TAG_CATEGORY_ORDER:
+        for name in DEFAULT_TAG_GROUPS.get(category, []):
+            all_defaults.append((name, category, False))
+        for name in DEFAULT_HIDDEN_TAG_GROUPS.get(category, []):
+            all_defaults.append((name, category, True))
+    for name, category, is_hidden in all_defaults:
+        if conn.execute("SELECT id FROM tags WHERE LOWER(name) = LOWER(?)", (name,)).fetchone():
+            continue
+        row = conn.execute(
+            "SELECT COALESCE(MAX(position), -1) AS mp FROM tags WHERE category = ?",
+            (category,),
+        ).fetchone()
+        cursor = conn.execute(
+            "INSERT INTO tags (name, category, position, is_hidden) VALUES (?, ?, ?, ?)",
+            (name, category, row["mp"] + 1, 1 if is_hidden else 0),
+        )
+        tag_id = cursor.lastrowid
+        kws = DEFAULT_TAG_KEYWORDS.get(name, [])
+        if kws:
+            _set_tag_keywords_conn(conn, tag_id, kws)
+
+
+def _insert_default_tags(conn: sqlite3.Connection) -> None:
+    """Seed all default tags (visible + hidden) with their keywords."""
+    for category in TAG_CATEGORY_ORDER:
+        # Visible tags
         for position, name in enumerate(DEFAULT_TAG_GROUPS.get(category, [])):
-            conn.execute(
-                "INSERT INTO tags (name, category, position) VALUES (?, ?, ?)",
+            cursor = conn.execute(
+                "INSERT INTO tags (name, category, position, is_hidden) VALUES (?, ?, ?, 0)",
                 (name, category, position),
             )
+            tag_id = cursor.lastrowid
+            kws = DEFAULT_TAG_KEYWORDS.get(name, [])
+            if kws:
+                _set_tag_keywords_conn(conn, tag_id, kws)
+        # Hidden tags
+        for name in DEFAULT_HIDDEN_TAG_GROUPS.get(category, []):
+            row = conn.execute(
+                "SELECT COALESCE(MAX(position), -1) AS mp FROM tags WHERE category = ?",
+                (category,),
+            ).fetchone()
+            cursor = conn.execute(
+                "INSERT INTO tags (name, category, position, is_hidden) VALUES (?, ?, ?, 1)",
+                (name, category, row["mp"] + 1),
+            )
+            tag_id = cursor.lastrowid
+            kws = DEFAULT_TAG_KEYWORDS.get(name, [])
+            if kws:
+                _set_tag_keywords_conn(conn, tag_id, kws)
+
+
+def _seed_or_migrate_keywords(conn: sqlite3.Connection) -> None:
+    """Seed auto-detect keywords for existing tags that have none yet."""
+    # Check if the table exists (may not for very old DBs before this migration)
+    table_exists = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='tag_keywords'"
+    ).fetchone()
+    if not table_exists:
+        return  # init_db() will create it; called again after creation
+    count = conn.execute("SELECT COUNT(*) AS count FROM tag_keywords").fetchone()["count"]
+    if count > 0:
+        return  # Already seeded
+    tag_rows = conn.execute("SELECT id, name FROM tags").fetchall()
+    for row in tag_rows:
+        kws = DEFAULT_TAG_KEYWORDS.get(row["name"], [])
+        if kws:
+            _set_tag_keywords_conn(conn, row["id"], kws)
 
 
 def _normalize_existing_tag_categories(conn: sqlite3.Connection) -> None:

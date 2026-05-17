@@ -32,6 +32,8 @@ class Tag(BaseModel):
     name: str
     category: str
     position: int
+    keywords: List[str] = Field(default_factory=list)
+    is_hidden: bool = False
 
 
 class Event(BaseModel):

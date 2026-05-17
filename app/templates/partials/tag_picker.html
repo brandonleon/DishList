@@ -28,7 +28,7 @@
         <div class="d-flex flex-wrap gap-2">
           {% for tag in tags %}
             {% set input_id = tag_picker_id ~ '-' ~ tag.id %}
-            <div class="tag-picker-option" data-tag-option data-tag-name="{{ tag.name | lower }}">
+            <div class="tag-picker-option {% if tag.is_hidden %}d-none{% endif %}" data-tag-option data-tag-name="{{ tag.name | lower }}" data-tag-hidden="{{ 'true' if tag.is_hidden else 'false' }}">
               <input
                 class="btn-check"
                 type="checkbox"
@@ -47,4 +47,10 @@
   <div class="alert alert-light border text-muted small mb-0 d-none" data-tag-empty-state>
     No tags match that search.
   </div>
+  {% if hidden_tag_count is defined and hidden_tag_count > 0 %}
+  <p class="text-muted small mt-2 mb-0"
+     style="font-size:.78rem">
+    💡 {{ hidden_tag_count }} more tag{{ 's' if hidden_tag_count != 1 else '' }} available — search by name or type keywords above to surface them.
+  </p>
+  {% endif %}
 </div>

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ipaddress
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
@@ -27,7 +28,11 @@ from .storage import (
     delete_event,
     delete_tag,
     get_dish,
+    get_tag_counts,
+    load_tags,
     reset_tags_to_defaults,
+    set_tag_keywords,
+    toggle_tag_visibility,
     update_tag,
     get_event_by_management_token,
     get_event_by_slug,
@@ -317,13 +322,24 @@ def event_add_form(request: Request, slug: str) -> HTMLResponse:
     event = _get_event_by_slug_or_404(slug)
     if not event.is_active:
         raise HTTPException(status_code=403, detail="This event is no longer accepting submissions")
+    tag_groups = load_tag_groups()
+    # Build keyword map for client-side auto-detection: {tagId: ["kw1", "kw2"]}
+    tag_kw_map = {
+        tag.id: tag.keywords
+        for _, tags in tag_groups
+        for tag in tags
+        if tag.keywords
+    }
+    hidden_count = sum(1 for _, tags in tag_groups for tag in tags if tag.is_hidden)
     return templates.TemplateResponse(
         "add.html",
         {
             "request": request,
             "event": event,
             "dish_types": event.dish_types,
-            "tag_groups": load_tag_groups(),
+            "tag_groups": tag_groups,
+            "tag_keywords_json": json.dumps(tag_kw_map),
+            "hidden_tag_count": hidden_count,
         },
     )
 
@@ -590,12 +606,22 @@ def _redirect_to_admin(request: Request, success: Optional[str] = None, error: O
     return RedirectResponse(url=target, status_code=status.HTTP_303_SEE_OTHER)
 
 
+def _redirect_to_admin_tags(request: Request, success: Optional[str] = None, error: Optional[str] = None) -> RedirectResponse:
+    target = str(request.url_for("admin_tags_page"))
+    params = {}
+    if success:
+        params["tag_success"] = success
+    if error:
+        params["tag_error"] = error
+    if params:
+        target = f"{target}?{urlencode(params)}"
+    return RedirectResponse(url=target, status_code=status.HTTP_303_SEE_OTHER)
+
+
 @app.get(ADMIN_PATH, response_class=HTMLResponse)
 def admin_page(request: Request) -> HTMLResponse:
     config = get_config()
     _check_admin_access(request, config)
-    tag_success = request.query_params.get("tag_success")
-    tag_error = request.query_params.get("tag_error")
     return templates.TemplateResponse(
         "admin.html",
         {
@@ -603,8 +629,26 @@ def admin_page(request: Request) -> HTMLResponse:
             "config": config,
             "events": load_events(),
             "admin_path": ADMIN_PATH,
+            "tag_counts": get_tag_counts(),
+            "admin_tags_url": str(request.url_for("admin_tags_page")),
+        },
+    )
+
+
+@app.get(f"{ADMIN_PATH}/tags", response_class=HTMLResponse)
+def admin_tags_page(request: Request) -> HTMLResponse:
+    config = get_config()
+    _check_admin_access(request, config)
+    tag_success = request.query_params.get("tag_success")
+    tag_error = request.query_params.get("tag_error")
+    return templates.TemplateResponse(
+        "admin_tags.html",
+        {
+            "request": request,
+            "admin_path": ADMIN_PATH,
             "tag_groups": load_tag_groups(),
             "tag_categories": get_tag_categories(),
+            "tag_counts": get_tag_counts(),
             "tag_success": tag_success,
             "tag_error": tag_error,
         },
@@ -642,25 +686,36 @@ def add_tag_action(
     request: Request,
     tag_name: str = Form(..., min_length=1, max_length=120),
     tag_category: str = Form(...),
+    tag_keywords: Optional[str] = Form(None),
+    tag_is_hidden: Optional[str] = Form(None),  # checkbox: present = hidden
 ) -> RedirectResponse:
     config = get_config()
     _check_admin_access(request, config)
+    keywords = [kw.strip() for kw in (tag_keywords or "").split(",") if kw.strip()]
     try:
-        create_tag(tag_name, tag_category)
+        create_tag(tag_name, tag_category, keywords=keywords or None, is_hidden=tag_is_hidden is not None)
     except ValueError as exc:
-        return _redirect_to_admin(request, error=str(exc))
-    return _redirect_to_admin(request, success="Tag added")
+        return _redirect_to_admin_tags(request, error=str(exc))
+    return _redirect_to_admin_tags(request, success="Tag added")
 
 
 @app.post(f"{ADMIN_PATH}/tags/{{tag_id}}")
-def update_tag_action(request: Request, tag_id: int, name: str = Form(...), category: str = Form(...)) -> RedirectResponse:
+def update_tag_action(
+    request: Request,
+    tag_id: int,
+    name: str = Form(...),
+    category: str = Form(...),
+    keywords: Optional[str] = Form(None),
+    is_hidden: Optional[str] = Form(None),  # checkbox: present = hidden
+) -> RedirectResponse:
     config = get_config()
     _check_admin_access(request, config)
+    keyword_list = [kw.strip() for kw in (keywords or "").split(",") if kw.strip()]
     try:
-        update_tag(tag_id, name, category)
+        update_tag(tag_id, name, category, keywords=keyword_list, is_hidden=is_hidden is not None)
     except ValueError as exc:
-        return _redirect_to_admin(request, error=str(exc))
-    return _redirect_to_admin(request, success="Tag updated")
+        return _redirect_to_admin_tags(request, error=str(exc))
+    return _redirect_to_admin_tags(request, success="Tag updated")
 
 
 @app.post(f"{ADMIN_PATH}/tags/reset")
@@ -668,7 +723,7 @@ def reset_tags_action(request: Request) -> RedirectResponse:
     config = get_config()
     _check_admin_access(request, config)
     reset_tags_to_defaults()
-    return _redirect_to_admin(request, success="Tag library reset to defaults")
+    return _redirect_to_admin_tags(request, success="Tag library reset to defaults")
 
 
 @app.post(f"{ADMIN_PATH}/tags/{{tag_id}}/delete")
@@ -676,7 +731,18 @@ def delete_tag_action(request: Request, tag_id: int) -> RedirectResponse:
     config = get_config()
     _check_admin_access(request, config)
     delete_tag(tag_id)
-    return _redirect_to_admin(request, success="Tag removed")
+    return _redirect_to_admin_tags(request, success="Tag removed")
+
+
+@app.post(f"{ADMIN_PATH}/tags/{{tag_id}}/visibility")
+def toggle_tag_visibility_action(request: Request, tag_id: int) -> RedirectResponse:
+    config = get_config()
+    _check_admin_access(request, config)
+    try:
+        toggle_tag_visibility(tag_id)
+    except ValueError as exc:
+        return _redirect_to_admin_tags(request, error=str(exc))
+    return _redirect_to_admin_tags(request, success="Tag visibility updated")
 
 
 @app.post(f"{ADMIN_PATH}/events/{{event_id}}/delete")
