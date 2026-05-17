@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DishList — User Guide</title>
+
+  <!-- Bootstrap 5 -->
+  <link
+    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+    rel="stylesheet"
+    integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
+    crossorigin="anonymous"
+  >
+
+  <!-- Syntax highlighting -->
+  <link
+    rel="stylesheet"
+    href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"
+  >
+
+  <style>
+    /* ── Layout ── */
+    body {
+      padding-top: 56px;
+      background-color: #f8f9fa;
+      color: #212529;
+    }
+
+    .sidebar {
+      position: sticky;
+      top: 56px;
+      height: calc(100vh - 56px);
+      overflow-y: auto;
+      border-right: 1px solid #dee2e6;
+      background: #fff;
+      padding: 1.5rem 1rem;
+    }
+
+    .content-col {
+      max-width: 860px;
+      padding: 2rem 2.5rem 4rem;
+    }
+
+    /* ── Navbar ── */
+    .navbar-brand {
+      font-weight: 700;
+      letter-spacing: 0.03em;
+    }
+
+    .nav-badge {
+      font-size: 0.7rem;
+      vertical-align: middle;
+    }
+
+    /* ── TOC ── */
+    .toc-heading {
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: #6c757d;
+      margin-bottom: 0.6rem;
+    }
+
+    .toc ul {
+      list-style: none;
+      padding-left: 0;
+      margin: 0;
+    }
+
+    .toc ul ul {
+      padding-left: 0.9rem;
+    }
+
+    .toc li {
+      margin: 1px 0;
+    }
+
+    .toc a {
+      display: block;
+      padding: 0.25rem 0.5rem;
+      font-size: 0.8rem;
+      color: #495057;
+      text-decoration: none;
+      border-radius: 4px;
+      line-height: 1.4;
+    }
+
+    .toc a:hover {
+      background-color: #f1f3f5;
+      color: #d4520a;
+    }
+
+    /* ── Content typography ── */
+    .content h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      margin-bottom: 0.4rem;
+      color: #1a1a1a;
+    }
+
+    .content h1 + p {
+      font-size: 1.05rem;
+      color: #495057;
+      margin-bottom: 2rem;
+    }
+
+    .content h2 {
+      font-size: 1.3rem;
+      font-weight: 600;
+      margin-top: 2.5rem;
+      margin-bottom: 0.75rem;
+      padding-bottom: 0.4rem;
+      border-bottom: 1px solid #dee2e6;
+      color: #1a1a1a;
+    }
+
+    .content h3 {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-top: 1.5rem;
+      margin-bottom: 0.5rem;
+      color: #343a40;
+    }
+
+    .content hr {
+      margin: 2rem 0;
+      border-color: #dee2e6;
+    }
+
+    /* ── Code ── */
+    .content code {
+      font-size: 0.85em;
+      background: #f1f3f5;
+      padding: 0.15em 0.4em;
+      border-radius: 3px;
+      color: #c0392b;
+    }
+
+    .content pre {
+      background: #f6f8fa;
+      border: 1px solid #dee2e6;
+      border-radius: 6px;
+      padding: 1rem 1.25rem;
+      overflow-x: auto;
+      margin: 1rem 0 1.5rem;
+    }
+
+    .content pre code {
+      background: transparent;
+      padding: 0;
+      color: inherit;
+      font-size: 0.82rem;
+    }
+
+    /* ── Tables ── */
+    .content table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1rem 0 1.5rem;
+      font-size: 0.875rem;
+    }
+
+    .content th {
+      background: #f1f3f5;
+      font-weight: 600;
+      padding: 0.5rem 0.75rem;
+      border: 1px solid #dee2e6;
+      text-align: left;
+    }
+
+    .content td {
+      padding: 0.45rem 0.75rem;
+      border: 1px solid #dee2e6;
+      vertical-align: top;
+    }
+
+    .content tr:nth-child(even) td {
+      background: #f8f9fa;
+    }
+
+    /* ── Blockquotes / callouts ── */
+    .content blockquote {
+      border-left: 3px solid #d4520a;
+      padding: 0.5rem 1rem;
+      margin: 1rem 0;
+      background: #fff8f5;
+      color: #495057;
+      border-radius: 0 4px 4px 0;
+    }
+
+    /* ── Footer ── */
+    .page-footer {
+      font-size: 0.75rem;
+      color: #adb5bd;
+      border-top: 1px solid #dee2e6;
+      padding: 1.5rem 0;
+      margin-top: 3rem;
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- Navbar -->
+  <nav class="navbar navbar-expand-lg navbar-dark bg-dark fixed-top shadow-sm">
+    <div class="container-fluid px-3">
+      <a class="navbar-brand" href="#">
+        dishlist
+      </a>
+      <span class="badge bg-secondary nav-badge ms-2">docs</span>
+    </div>
+  </nav>
+
+  <!-- Body -->
+  <div class="container-fluid g-0">
+    <div class="row g-0">
+
+      <!-- Sidebar -->
+      <div class="col-lg-3 col-xl-2 d-none d-lg-block">
+        <aside class="sidebar">
+          <div class="toc-heading">On this page</div>
+          <div class="toc"><span class="toctitle">Contents</span><ul>
+<li><a href="#installation-startup">Installation &amp; startup</a><ul>
+<li><a href="#docker">Docker</a></li>
+</ul>
+</li>
+<li><a href="#creating-an-event">Creating an event</a></li>
+<li><a href="#sharing-with-guests">Sharing with guests</a></li>
+<li><a href="#guest-dish-submission">Guest dish submission</a><ul>
+<li><a href="#dietary-tags">Dietary Tags</a></li>
+</ul>
+</li>
+<li><a href="#managing-your-event">Managing your event</a></li>
+<li><a href="#viewing-the-board">Viewing the board</a></li>
+<li><a href="#dietary-tag-library">Dietary tag library</a></li>
+<li><a href="#administration">Administration</a><ul>
+<li><a href="#cli-reference">CLI reference</a></li>
+<li><a href="#enabling-the-web-admin-panel">Enabling the web admin panel</a></li>
+<li><a href="#web-admin-capabilities">Web admin capabilities</a></li>
+</ul>
+</li>
+<li><a href="#troubleshooting">Troubleshooting</a></li>
+</ul>
+</div>
+
+        </aside>
+      </div>
+
+      <!-- Main content -->
+      <div class="col-lg-9 col-xl-10">
+        <div class="content-col">
+          <article class="content">
+            <h1 id="dishlist-user-guide">DishList — User Guide</h1>
+<p>DishList is a self-hosted potluck coordinator. The host creates an event, shares a link, and guests sign up for what they're bringing. No accounts, no app installs — just a URL.</p>
+<hr />
+<h2 id="installation-startup">Installation &amp; startup</h2>
+<pre><code class="language-bash">uv sync
+uv run dishlist serve          # with live reload
+
+# or directly with Uvicorn
+uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
+</code></pre>
+<p>Visit <a href="http://127.0.0.1:8000">http://127.0.0.1:8000</a> to open DishList.</p>
+<h3 id="docker">Docker</h3>
+<pre><code class="language-bash">docker build -t dishlist .
+
+docker run -d --name dishlist -p 8000:8000 \
+  -v &quot;$(pwd)/data:/app/data&quot; \
+  dishlist
+</code></pre>
+<p>Mount <code>data/</code> so the database and config persist between container restarts. Override the port with <code>-e PORT=8080</code>.</p>
+<h4 id="admin-commands-in-docker">Admin commands in Docker</h4>
+<p>Run <code>dishlist admin</code> commands against the running container with <code>docker exec</code>, or as a one-shot using the same data volume:</p>
+<pre><code class="language-bash"># Status check
+docker exec dishlist dishlist admin status
+
+# Enable web admin and add your IP (against running container)
+docker exec dishlist dishlist admin web enable --network 192.168.1.5
+
+# Same thing as a one-shot (container doesn't need to be running)
+docker run --rm \
+  -v &quot;$(pwd)/data:/app/data&quot; \
+  dishlist dishlist admin web enable --network 192.168.1.5
+</code></pre>
+<blockquote>
+<p>Always mount the same <code>data/</code> volume so CLI changes are written to the
+same <code>dishlist.db</code> and <code>config.json</code> the server is using.</p>
+</blockquote>
+<hr />
+<h2 id="creating-an-event">Creating an event</h2>
+<ol>
+<li>Go to the landing page and click <strong>Create an Event</strong>.</li>
+<li>Fill in the event details:</li>
+<li><strong>Event name</strong> <em>(required)</em> — shown at the top of the guest board.</li>
+<li><strong>Date</strong> — optional, displayed on the board for guests.</li>
+<li><strong>Host / household name</strong> — how your own contributions appear on the board (e.g. <em>The Smokehouse</em>). Defaults to <em>The House</em> if left blank.</li>
+<li><strong>Description</strong> — a short blurb guests see when they open the link.</li>
+<li>Choose your <strong>event URL style</strong>:</li>
+<li><strong>Name-based</strong> <em>(default)</em> — derived from your event name, max 32 characters (e.g. <code>/e/friendsgiving-2026-wum2</code>). Easy to read and share.</li>
+<li><strong>Fully random</strong> — an 8-character code with no relation to the event name (e.g. <code>/e/x7k2m9p4</code>). Harder to guess — good for private events.</li>
+<li>The preview updates live as you type so you know exactly what the link will look like before creating the event.</li>
+<li>Edit the <strong>dish categories</strong> — one per line. These are the options guests pick from when submitting a dish. You can change them later from the management page.</li>
+<li>Optionally add <strong>host contributions</strong> — dishes the house is already providing. These appear pinned at the top of the board.</li>
+<li>Click <strong>Create Event</strong>.</li>
+</ol>
+<p>After creation you land on your <strong>management dashboard</strong>. Bookmark that URL — it's the only way back to your host controls.</p>
+<hr />
+<h2 id="sharing-with-guests">Sharing with guests</h2>
+<p>From the management dashboard, copy the <strong>Guest link</strong> and share it however you like — group chat, email, calendar invite. Guests don't need an account.</p>
+<p>The guest board shows:
+- Host contributions pinned at the top, labelled with your household name.
+- All guest submissions below, searchable and toggleable between card and table view.</p>
+<hr />
+<h2 id="guest-dish-submission">Guest dish submission</h2>
+<p>Guests open the guest link and click <strong>Share Your Dish</strong>. The form has four fields:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Your name</strong></td>
+<td>How the guest appears on the board</td>
+</tr>
+<tr>
+<td><strong>Dish name</strong></td>
+<td>What they're bringing</td>
+</tr>
+<tr>
+<td><strong>Category</strong></td>
+<td>Picked from the host's list</td>
+</tr>
+<tr>
+<td><strong>Notes</strong></td>
+<td>Serving size, prep details, allergens — anything guests should know</td>
+</tr>
+</tbody>
+</table>
+<h3 id="dietary-tags">Dietary Tags</h3>
+<p>Below the notes field is a <strong>Dietary Tags</strong> section. Guests can search and select any tags that apply to their dish.</p>
+<p>Tags are warning-based — they describe what a dish <em>contains</em>, not what it is free of. This keeps information honest and actionable for guests with allergies.</p>
+<p><strong>Auto-suggest:</strong> as the guest types their notes, matching tags are automatically selected in real time. For example:
+- Typing <code>walnut</code> selects <em>Contains tree nuts</em>
+- Typing <code>made with butter</code> selects <em>Contains dairy</em>
+- Typing <code>reheat in the oven</code> selects <em>Reheat: oven</em>
+- Typing <code>great for kids</code> selects <em>Kid-friendly</em>
+- Typing <code>prepared in a gf kitchen</code> selects <em>Prepared in a GF kitchen</em></p>
+<p>Negation phrases are detected and ignored — typing <code>peanut free</code> or <code>dairy-free</code> will <strong>not</strong> select the corresponding allergen tag.</p>
+<p>Guests can adjust any auto-suggested tag freely before submitting.</p>
+<hr />
+<h2 id="managing-your-event">Managing your event</h2>
+<p>Your management dashboard (<code>/manage/{token}</code>) lets you:</p>
+<ul>
+<li><strong>Edit event details</strong> — name, date, description, host name, and dish categories.</li>
+<li><strong>Toggle submissions open/closed</strong> — close the event to stop accepting new dishes.</li>
+<li><strong>Add or remove host contributions</strong> — pin or unpin house dishes at any time.</li>
+<li><strong>Edit or delete any guest dish</strong> — fix typos, update categories, or remove a dish.</li>
+</ul>
+<blockquote>
+<p><strong>Keep your management link safe.</strong> Anyone with it can edit your event. It is not displayed on the guest board.</p>
+</blockquote>
+<hr />
+<h2 id="viewing-the-board">Viewing the board</h2>
+<p>The guest board at <code>/e/{slug}</code> is public. It offers:</p>
+<ul>
+<li><strong>Search</strong> — filters dishes live across name, contributor, category, and notes.</li>
+<li><strong>Card view</strong> — visual grid, good for scanning at a glance.</li>
+<li><strong>Table view</strong> — compact list, good for long events.</li>
+</ul>
+<hr />
+<h2 id="dietary-tag-library">Dietary tag library</h2>
+<p>Tags are organised into three categories:</p>
+<table>
+<thead>
+<tr>
+<th>Category</th>
+<th>Examples</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Allergen warnings</strong></td>
+<td>Contains peanuts, Contains dairy, Contains gluten / wheat, Contains fish…</td>
+</tr>
+<tr>
+<td><strong>Dietary preferences</strong></td>
+<td>Vegan, Vegetarian, Pescatarian, Kosher, Halal</td>
+</tr>
+<tr>
+<td><strong>Content &amp; serving</strong></td>
+<td>Spicy, Kid-friendly, Keep chilled, Prepared in a GF kitchen, Reheat: oven…</td>
+</tr>
+</tbody>
+</table>
+<p>The tag library is shared across all events and managed via the CLI or web admin.</p>
+<hr />
+<h2 id="administration">Administration</h2>
+<p>DishList is administered via the <code>dishlist</code> CLI. The web admin panel is disabled by default for security.</p>
+<h3 id="cli-reference">CLI reference</h3>
+<pre><code>dishlist serve                          Start the web server
+dishlist admin status                   Show current config and system status
+
+dishlist admin web enable               Enable /pantry-admin web panel
+dishlist admin web enable --network IP  Enable and whitelist an IP in one step
+dishlist admin web disable              Disable /pantry-admin web panel
+
+dishlist admin networks list            List allowed admin IP/CIDR ranges
+dishlist admin networks add &lt;cidr&gt;      Add an IP or CIDR (e.g. 192.168.1.5)
+dishlist admin networks remove &lt;cidr&gt;   Remove an IP or CIDR
+
+dishlist admin dish-types list          List default dish categories for new events
+dishlist admin dish-types add &lt;name&gt;    Add a category
+dishlist admin dish-types remove &lt;name&gt; Remove a category
+
+dishlist admin tags list                List all dietary tags (with IDs)
+dishlist admin tags add &lt;name&gt; &lt;cat&gt;    Add a tag to a category
+dishlist admin tags remove &lt;id&gt;         Remove a tag by ID
+dishlist admin tags reset               Reset tag library to built-in defaults
+
+dishlist admin events list              List all events
+dishlist admin events delete &lt;id&gt;       Delete an event and all its dishes
+</code></pre>
+<h3 id="enabling-the-web-admin-panel">Enabling the web admin panel</h3>
+<p>The web panel at <code>/pantry-admin</code> is <strong>off by default</strong>. To enable it:</p>
+<pre><code class="language-bash"># Add your IP and enable in one step
+dishlist admin web enable --network 192.168.1.5
+
+# Or separately
+dishlist admin networks add 192.168.1.5
+dishlist admin web enable
+</code></pre>
+<p>CIDR ranges work too — e.g. <code>10.0.0.0/24</code> to allow a whole subnet.</p>
+<p>When enabled, <code>/pantry-admin</code> lets you manage dish categories, the dietary tag library, and all events from a browser. Only requests from allowed IPs can access it.</p>
+<p>To disable:</p>
+<pre><code class="language-bash">dishlist admin web disable
+</code></pre>
+<h3 id="web-admin-capabilities">Web admin capabilities</h3>
+<p>When the web panel is enabled, it provides:</p>
+<ul>
+<li>Add, rename, recategorise, or delete individual dietary tags (inline edit on each chip)</li>
+<li>Reset the tag library to defaults (with confirmation — clears all tag associations from dishes)</li>
+<li>Manage global default dish categories</li>
+<li>View and delete any event</li>
+</ul>
+<hr />
+<h2 id="troubleshooting">Troubleshooting</h2>
+<p><strong>I lost my management link.</strong>
+Retrieve it from the database:</p>
+<pre><code class="language-bash">sqlite3 data/dishlist.db &quot;SELECT name, management_token FROM events;&quot;
+</code></pre>
+<p><strong><code>/pantry-admin</code> returns 404.</strong>
+The web admin panel is disabled. Enable it with:</p>
+<pre><code class="language-bash">dishlist admin web enable --network &lt;your-ip&gt;
+</code></pre>
+<p><strong>I can't access <code>/pantry-admin</code> (403 Forbidden).</strong>
+Your IP is not in the allowlist. Add it:</p>
+<pre><code class="language-bash">dishlist admin networks add &lt;your-ip&gt;
+</code></pre>
+<p><strong>The guest board is showing stale data.</strong>
+The board uses HTMX partial refreshes on search. A hard browser refresh (<code>Cmd+Shift+R</code> / <code>Ctrl+Shift+R</code>) will reload everything.</p>
+<p><strong>Live reload isn't working.</strong>
+Run <code>uv run dishlist serve --no-reload</code> or set <code>DISHLIST_RELOAD=0</code>. Some environments block file-system watchers.</p>
+<p><strong>A tag auto-suggested incorrectly.</strong>
+Auto-suggest is a convenience helper — guests can uncheck any tag before submitting. Tags can be renamed or removed via <code>dishlist admin tags</code>.</p>
+          </article>
+
+          <footer class="page-footer">
+            Built with <a href="https://python-markdown.github.io/" class="text-secondary">Python-Markdown</a>
+            and <a href="https://getbootstrap.com/" class="text-secondary">Bootstrap 5</a>.
+            Run <code>uv run docs/build.py</code> to regenerate.
+          </footer>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Bootstrap JS -->
+  <script
+    src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
+    integrity="sha384-YvpcrYf0tY3lHB60NNkmXc4s9bIOgUxi8T/jzmf7GM0MtO4fBIWa/0hDPfMoEe8"
+    crossorigin="anonymous"
+  ></script>
+
+  <!-- Syntax highlighting -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      document.querySelectorAll("pre code").forEach(block => {
+        hljs.highlightElement(block);
+      });
+    });
+  </script>
+
+</body>
+</html>

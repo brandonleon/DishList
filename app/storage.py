@@ -30,6 +30,7 @@ DB_PATH = DATA_DIR / "dishlist.db"
 
 CONFIG_CATEGORY_DISH_TYPES = "dish_type"
 CONFIG_CATEGORY_ADMIN_NETWORKS = "admin_network"
+CONFIG_CATEGORY_WEB_ADMIN = "web_admin"
 
 TAG_CATEGORY_ORDER = [
     "Allergen warnings",
@@ -637,23 +638,43 @@ def load_app_config_from_db() -> Optional[Tuple[AppConfig, datetime]]:
             "SELECT value, position, updated_at FROM config_entries WHERE category = ? ORDER BY position ASC, id ASC",
             (CONFIG_CATEGORY_ADMIN_NETWORKS,),
         ).fetchall()
-    if not dish_rows and not admin_rows:
+        web_admin_rows = conn.execute(
+            "SELECT value, updated_at FROM config_entries WHERE category = ?",
+            (CONFIG_CATEGORY_WEB_ADMIN,),
+        ).fetchall()
+    if not dish_rows and not admin_rows and not web_admin_rows:
         return None
     dish_types = [row["value"] for row in dish_rows]
     admin_networks = [row["value"] for row in admin_rows]
-    latest_updated = _latest_updated_at(list(dish_rows) + list(admin_rows))
-    return AppConfig(dish_types=dish_types, admin_networks=admin_networks), latest_updated
+    # Migration: existing DB rows without a web_admin entry and with custom
+    # networks are treated as enabled to preserve prior behaviour.
+    if web_admin_rows:
+        web_admin_enabled = web_admin_rows[0]["value"] == "true"
+    else:
+        web_admin_enabled = bool(admin_networks)
+    all_rows = list(dish_rows) + list(admin_rows) + list(web_admin_rows)
+    latest_updated = _latest_updated_at(all_rows)
+    return AppConfig(
+        dish_types=dish_types,
+        admin_networks=admin_networks,
+        web_admin_enabled=web_admin_enabled,
+    ), latest_updated
 
 
 def save_app_config_to_db(config: AppConfig) -> None:
     timestamp = datetime.utcnow().isoformat()
     with _get_connection() as conn:
         conn.execute(
-            "DELETE FROM config_entries WHERE category IN (?, ?)",
-            (CONFIG_CATEGORY_DISH_TYPES, CONFIG_CATEGORY_ADMIN_NETWORKS),
+            "DELETE FROM config_entries WHERE category IN (?, ?, ?)",
+            (CONFIG_CATEGORY_DISH_TYPES, CONFIG_CATEGORY_ADMIN_NETWORKS, CONFIG_CATEGORY_WEB_ADMIN),
         )
         _bulk_insert_config_entries(conn, CONFIG_CATEGORY_DISH_TYPES, config.dish_types, timestamp)
         _bulk_insert_config_entries(conn, CONFIG_CATEGORY_ADMIN_NETWORKS, config.admin_networks, timestamp)
+        _bulk_insert_config_entries(
+            conn, CONFIG_CATEGORY_WEB_ADMIN,
+            ["true" if config.web_admin_enabled else "false"],
+            timestamp,
+        )
 
 
 def _bulk_insert_config_entries(conn: sqlite3.Connection, category: str, values: List[str], timestamp: str) -> None:

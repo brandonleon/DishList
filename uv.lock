@@ -58,8 +58,9 @@ wheels = [
 [[package]]
 name = "dishlist"
 version = "0.4.0a1"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
+    { name = "click" },
     { name = "fastapi" },
     { name = "jinja2" },
     { name = "pydantic" },
@@ -70,6 +71,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "click", specifier = ">=8.3.3" },
     { name = "fastapi", specifier = ">=0.115,<1" },
     { name = "jinja2" },
     { name = "pydantic", specifier = ">=2.10,<3" },

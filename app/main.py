@@ -155,6 +155,14 @@ def _filter_dishes(dishes: List[DishEntry], query: str) -> List[DishEntry]:
     return filtered
 
 
+def _check_admin_access(request: Request, config: AppConfig) -> None:
+    """Raise 404 if web admin is disabled, 403 if IP is not allowed."""
+    if not config.web_admin_enabled:
+        raise HTTPException(status_code=404, detail="Not found")
+    if not _is_ip_allowed(request, config):
+        raise HTTPException(status_code=403, detail="Admin access restricted")
+
+
 def _is_ip_allowed(request: Request, config: AppConfig) -> bool:
     client_host = request.client.host if request.client else "127.0.0.1"
     try:
@@ -585,8 +593,7 @@ def _redirect_to_admin(request: Request, success: Optional[str] = None, error: O
 @app.get(ADMIN_PATH, response_class=HTMLResponse)
 def admin_page(request: Request) -> HTMLResponse:
     config = get_config()
-    if not _is_ip_allowed(request, config):
-        raise HTTPException(status_code=403, detail="Admin access restricted")
+    _check_admin_access(request, config)
     tag_success = request.query_params.get("tag_success")
     tag_error = request.query_params.get("tag_error")
     return templates.TemplateResponse(
@@ -611,8 +618,7 @@ def update_admin_settings(
     admin_networks_input: str = Form(...),
 ) -> RedirectResponse:
     config = get_config()
-    if not _is_ip_allowed(request, config):
-        raise HTTPException(status_code=403, detail="Admin access restricted")
+    _check_admin_access(request, config)
 
     dish_types = [line.strip() for line in dish_types_input.splitlines() if line.strip()]
     networks = [line.strip() for line in admin_networks_input.splitlines() if line.strip()]
@@ -621,7 +627,11 @@ def update_admin_settings(
     if not networks:
         raise HTTPException(status_code=400, detail="At least one network is required")
 
-    new_config = AppConfig(dish_types=dish_types, admin_networks=networks)
+    new_config = AppConfig(
+        dish_types=dish_types,
+        admin_networks=networks,
+        web_admin_enabled=config.web_admin_enabled,
+    )
     save_config(new_config)
     app.state.config = new_config
     return RedirectResponse(url=request.url_for("admin_page"), status_code=status.HTTP_303_SEE_OTHER)
@@ -634,8 +644,7 @@ def add_tag_action(
     tag_category: str = Form(...),
 ) -> RedirectResponse:
     config = get_config()
-    if not _is_ip_allowed(request, config):
-        raise HTTPException(status_code=403, detail="Admin access restricted")
+    _check_admin_access(request, config)
     try:
         create_tag(tag_name, tag_category)
     except ValueError as exc:
@@ -646,8 +655,7 @@ def add_tag_action(
 @app.post(f"{ADMIN_PATH}/tags/{{tag_id}}")
 def update_tag_action(request: Request, tag_id: int, name: str = Form(...), category: str = Form(...)) -> RedirectResponse:
     config = get_config()
-    if not _is_ip_allowed(request, config):
-        raise HTTPException(status_code=403, detail="Admin access restricted")
+    _check_admin_access(request, config)
     try:
         update_tag(tag_id, name, category)
     except ValueError as exc:
@@ -658,8 +666,7 @@ def update_tag_action(request: Request, tag_id: int, name: str = Form(...), cate
 @app.post(f"{ADMIN_PATH}/tags/reset")
 def reset_tags_action(request: Request) -> RedirectResponse:
     config = get_config()
-    if not _is_ip_allowed(request, config):
-        raise HTTPException(status_code=403, detail="Admin access restricted")
+    _check_admin_access(request, config)
     reset_tags_to_defaults()
     return _redirect_to_admin(request, success="Tag library reset to defaults")
 
@@ -667,8 +674,7 @@ def reset_tags_action(request: Request) -> RedirectResponse:
 @app.post(f"{ADMIN_PATH}/tags/{{tag_id}}/delete")
 def delete_tag_action(request: Request, tag_id: int) -> RedirectResponse:
     config = get_config()
-    if not _is_ip_allowed(request, config):
-        raise HTTPException(status_code=403, detail="Admin access restricted")
+    _check_admin_access(request, config)
     delete_tag(tag_id)
     return _redirect_to_admin(request, success="Tag removed")
 
@@ -676,7 +682,6 @@ def delete_tag_action(request: Request, tag_id: int) -> RedirectResponse:
 @app.post(f"{ADMIN_PATH}/events/{{event_id}}/delete")
 def admin_delete_event(request: Request, event_id: int) -> RedirectResponse:
     config = get_config()
-    if not _is_ip_allowed(request, config):
-        raise HTTPException(status_code=403, detail="Admin access restricted")
+    _check_admin_access(request, config)
     delete_event(event_id)
     return RedirectResponse(url=request.url_for("admin_page"), status_code=status.HTTP_303_SEE_OTHER)

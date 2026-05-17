@@ -1,7 +1,7 @@
 [project]
 name = "dishlist"
 version = "0.4.0a1"
-description = "Add your description here"
+description = "Self-hosted potluck planner"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -11,4 +11,14 @@ dependencies = [
     "python-multipart",
     "pydantic>=2.10,<3",
     "starlette<1.0",
+    "click>=8.3.3",
 ]
+
+[project.scripts]
+dishlist = "app.cli:cli"
+
+[tool.uv]
+package = true
+
+[tool.setuptools.packages.find]
+include = ["app*"]
