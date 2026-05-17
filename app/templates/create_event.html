@@ -49,9 +49,32 @@
 
           <!-- ── Event URL ──────────────────────────────────────── -->
           <div class="mb-4 p-3 rounded-3 border bg-light">
-            <h2 class="h6 mb-2 fw-semibold">Your event URL</h2>
-            <p class="small mb-2 text-secondary" id="slug-preview">Enter an event name above to preview your link.</p>
-            <div class="form-check">
+            <h2 class="h6 mb-1 fw-semibold">Your event URL</h2>
+
+            <!-- name-derived preview -->
+            <div id="slug-name-preview" class="mb-2 d-none">
+              <p class="small text-muted mb-1">Based on your event name:</p>
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <code id="slug-name-url" class="fs-6 text-body"></code>
+                <span class="badge text-bg-secondary" style="font-size:.7rem">name-based</span>
+              </div>
+              <p class="text-muted mb-0" style="font-size:.75rem">A short random suffix keeps your link unique.</p>
+            </div>
+
+            <!-- random preview -->
+            <div id="slug-random-preview" class="mb-2 d-none">
+              <p class="small text-muted mb-1">Fully random URL:</p>
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <code id="slug-random-url" class="fs-6 text-body"></code>
+                <span class="badge text-bg-info" style="font-size:.7rem">random</span>
+              </div>
+              <p class="text-muted mb-0" style="font-size:.75rem">Harder to guess — great for private events.</p>
+            </div>
+
+            <!-- empty state -->
+            <p id="slug-empty" class="small text-secondary mb-2">Enter an event name above to preview your link.</p>
+
+            <div class="form-check mt-2">
               <input class="form-check-input" type="checkbox" id="use_random_slug" name="use_random_slug" value="1" />
               <label class="form-check-label small" for="use_random_slug">
                 Use a fully random URL instead <span class="text-muted">(more private — harder to guess)</span>
@@ -96,32 +119,71 @@
 {% block extra_js %}
 <script>
   // ── Slug preview ───────────────────────────────────────────────
-  const nameInput = document.getElementById('name');
-  const slugPreview = document.getElementById('slug-preview');
-  const randomCheck = document.getElementById('use_random_slug');
+  const nameInput       = document.getElementById('name');
+  const randomCheck     = document.getElementById('use_random_slug');
+  const elNamePreview   = document.getElementById('slug-name-preview');
+  const elNameUrl       = document.getElementById('slug-name-url');
+  const elRandomPreview = document.getElementById('slug-random-preview');
+  const elRandomUrl     = document.getElementById('slug-random-url');
+  const elEmpty         = document.getElementById('slug-empty');
+
+  const baseUrl = window.location.origin;
+
+  // Generate a random slug once per page load and cache it so toggling
+  // back and forth always shows the same random value.
+  let cachedRandomSlug = null;
+
+  function randomSuffix(len) {
+    const chars = 'abcdefghijkmnpqrstuvwxyz23456789'; // no confusable chars
+    return Array.from({length: len}, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+  }
+
+  function getRandomSlug() {
+    if (!cachedRandomSlug) {
+      cachedRandomSlug = randomSuffix(8);
+    }
+    return cachedRandomSlug;
+  }
 
   function slugify(text) {
     return text.toLowerCase()
       .replace(/[^\w\s-]/g, '')
       .replace(/[\s_-]+/g, '-')
       .replace(/^-+|-+$/g, '')
-      .substring(0, 40);
+      .substring(0, 27);
   }
 
   function updateSlugPreview() {
-    if (randomCheck.checked) {
-      slugPreview.textContent = 'Your event URL will use a fully random code (generated on creation).';
-      return;
-    }
     const name = nameInput.value.trim();
-    if (!name) {
-      slugPreview.textContent = 'Enter an event name above to preview your link.';
+    const hasName = name.length > 0;
+
+    if (!hasName && !randomCheck.checked) {
+      // empty state
+      elEmpty.classList.remove('d-none');
+      elNamePreview.classList.add('d-none');
+      elRandomPreview.classList.add('d-none');
       return;
     }
-    const slug = slugify(name);
-    slugPreview.innerHTML = `Preview: <code>/e/${slug}-xxxx</code> <span class="text-muted">(a short random suffix keeps it unique)</span>`;
+
+    elEmpty.classList.add('d-none');
+
+    if (randomCheck.checked) {
+      // Show random URL preview; hide name-based
+      elNamePreview.classList.add('d-none');
+      elRandomPreview.classList.remove('d-none');
+      elRandomUrl.textContent = `${baseUrl}/e/${getRandomSlug()}`;
+    } else {
+      // Show name-based URL preview; hide random
+      elRandomPreview.classList.add('d-none');
+      elNamePreview.classList.remove('d-none');
+      const slug = slugify(name);
+      // Show a stable suffix so the preview looks real (server appends a real one)
+      elNameUrl.textContent = `${baseUrl}/e/${slug}-${randomSuffix(4)}`;
+    }
   }
 
+  // Regenerate the name-based suffix on each keystroke so it feels live;
+  // the random slug is stable (cached) for the lifetime of the page.
   nameInput.addEventListener('input', updateSlugPreview);
   randomCheck.addEventListener('change', updateSlugPreview);
 

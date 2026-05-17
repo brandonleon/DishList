@@ -6,47 +6,313 @@
 
 {% block content %}
 <div class="row justify-content-center">
-  <div class="col-lg-8">
+  <div class="col-lg-7">
     <div class="card shadow-sm">
-      <div class="card-body p-4">
+      <div class="card-body p-4 p-lg-5">
         <p class="text-uppercase small text-muted mb-1">{{ event.name }}</p>
-        <h1 class="h3 mb-4">Tell everyone what you're bringing</h1>
+        <h1 class="h3 mb-1">Tell everyone what you're bringing</h1>
+        <p class="text-secondary mb-4">It only takes a few seconds.</p>
+
         <form method="post" action="{{ url_for('event_add_submission', slug=event.slug) }}">
+
+          <!-- Your name -->
           <div class="mb-3">
-            <label for="contributor" class="form-label">Your name</label>
-            <input type="text" class="form-control" id="contributor" name="contributor" placeholder="Alex Chef" required />
+            <label for="contributor" class="form-label fw-semibold">
+              Your name <span class="text-danger">*</span>
+            </label>
+            <input
+              type="text" class="form-control form-control-lg"
+              id="contributor" name="contributor"
+              placeholder="Alex Chef"
+              required maxlength="80"
+              autocomplete="name" autofocus
+            />
           </div>
+
+          <!-- Dish name + Category -->
+          <div class="row g-3 mb-3">
+            <div class="col-md-8">
+              <label for="dish_name" class="form-label fw-semibold">
+                Dish name <span class="text-danger">*</span>
+              </label>
+              <input
+                type="text" class="form-control"
+                id="dish_name" name="dish_name"
+                placeholder="Lemon Herb Pasta"
+                required maxlength="120"
+              />
+            </div>
+            <div class="col-md-4">
+              <label for="dish_type" class="form-label fw-semibold">
+                Category <span class="text-danger">*</span>
+              </label>
+              <select class="form-select" id="dish_type" name="dish_type" required>
+                {% for dish_type in dish_types %}
+                  <option value="{{ dish_type }}">{{ dish_type }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+
+          <!-- Notes — drives tag auto-suggest below -->
           <div class="mb-3">
-            <label for="dish_name" class="form-label">Dish name</label>
-            <input type="text" class="form-control" id="dish_name" name="dish_name" placeholder="Lemon Herb Pasta" required />
+            <label for="notes" class="form-label fw-semibold">Notes</label>
+            <textarea
+              class="form-control" id="notes" name="notes" rows="2"
+              placeholder="e.g., serves 8, needs reheating, made with tree nuts"
+            ></textarea>
+            <div class="form-text">
+              Serving size, prep details, allergens — tags below are auto-suggested as you type.
+            </div>
           </div>
-          <div class="mb-3">
-            <label for="dish_type" class="form-label">Dish type</label>
-            <select class="form-select" id="dish_type" name="dish_type" required>
-              {% for dish_type in dish_types %}
-                <option value="{{ dish_type }}">{{ dish_type }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          <div class="mb-3">
-            <label for="allergens" class="form-label">Dish Allergens</label>
-            <textarea class="form-control" id="allergens" name="allergens" rows="2" placeholder="e.g., contains peanuts, contains dairy"></textarea>
-            <div class="form-text">Separate allergens with commas so guests can scan quickly.</div>
-          </div>
-          {% with picker_id="add-dietary-tags", selected_tag_ids=[], helper_text="Search or scroll to add curated dietary notes. Only hosts can manage this list." %}
+
+          <!-- Tag picker -->
+          {% with picker_id="add-dietary-tags", selected_tag_ids=[], helper_text="Auto-suggested from your notes — adjust freely." %}
             {% include "partials/tag_picker.html" %}
           {% endwith %}
-          <div class="mb-4">
-            <label for="notes" class="form-label">Extra notes</label>
-            <textarea class="form-control" id="notes" name="notes" rows="3" placeholder="Goes great with crunchy bread"></textarea>
+
+          <div class="d-flex justify-content-between align-items-center mt-4">
+            <a class="btn btn-outline-secondary" href="{{ url_for('event_home', slug=event.slug) }}">Cancel</a>
+            <button type="submit" class="btn btn-primary btn-lg px-4">Add to the potluck</button>
           </div>
-          <div class="d-flex justify-content-between align-items-center">
-            <a class="btn btn-outline-secondary" href="{{ url_for('event_home', slug=event.slug) }}">Back to board</a>
-            <button type="submit" class="btn btn-primary btn-lg">Add to the potluck</button>
-          </div>
+
         </form>
       </div>
     </div>
   </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<style>
+  @keyframes tagAutoFlash {
+    0%   { outline: 3px solid rgba(var(--bs-primary-rgb), 0.55); outline-offset: 1px; }
+    100% { outline: 3px solid transparent; outline-offset: 5px; }
+  }
+  .tag-auto-flash { animation: tagAutoFlash 0.65s ease-out forwards; }
+</style>
+<script>
+(function () {
+  'use strict';
+
+  // ── Helpers ────────────────────────────────────────────────────
+
+  function escRe(s) {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  /**
+   * Returns true if `text` contains `pattern` AND the match is not cancelled
+   * by a negation phrase like "X free", "X-free", "free of X", "free from X".
+   *
+   * @param {string}          text
+   * @param {string|RegExp}   pattern  – string uses \b prefix match; RegExp used as-is
+   * @param {string|null}     stem     – the base word to check negation against
+   *                                     (defaults to `pattern` when pattern is a string)
+   */
+  function termMatches(text, pattern, stem) {
+    // 1. Does the pattern appear at all?
+    const re = pattern instanceof RegExp
+      ? pattern
+      : new RegExp('\\b' + escRe(pattern), 'i');
+    if (!re.test(text)) return false;
+
+    // 2. Is it negated?  e.g. "peanut free / peanut-free / free of peanuts / free from peanuts"
+    const s = stem ?? (typeof pattern === 'string' ? pattern : null);
+    if (s) {
+      const se = escRe(s);
+      if (new RegExp('\\b' + se + 's?[-\\s]+free\\b', 'i').test(text)) return false;
+      if (new RegExp('\\bfree[-\\s]+(?:of|from)[-\\s]+' + se, 'i').test(text)) return false;
+    }
+    return true;
+  }
+
+  // ── Suggestion table ──────────────────────────────────────────
+  // Each row: [pattern, tagName, negationStem?]
+  //   pattern      – string (matched as \b<pattern>) or RegExp
+  //   tagName      – must match the tag label exactly (case-insensitive)
+  //   negationStem – word used to build "X free" / "free of X" negation check;
+  //                  falls back to pattern when pattern is a string
+  const SUGGESTIONS = [
+    // ── Allergen warnings ──────────────────────────────────────
+    ['peanut',            'contains peanuts'],
+    ['groundnut',         'contains peanuts'],
+    [/\bnuts?\b/i,        'contains tree nuts',       'nut'],
+    ['almond',            'contains tree nuts'],
+    ['cashew',            'contains tree nuts'],
+    ['walnut',            'contains tree nuts'],
+    ['pecan',             'contains tree nuts'],
+    ['hazelnut',          'contains tree nuts'],
+    ['pistachio',         'contains tree nuts'],
+    ['macadamia',         'contains tree nuts'],
+    ['dairy',             'contains dairy'],
+    ['milk',              'contains dairy'],
+    ['cream',             'contains dairy'],
+    ['cheese',            'contains dairy'],
+    ['butter',            'contains dairy'],
+    ['yogurt',            'contains dairy'],
+    ['yoghurt',           'contains dairy'],
+    ['whey',              'contains dairy'],
+    [/\beggs?\b/i,        'contains eggs',            'egg'],  // not "eggplant"
+    ['gluten',            'contains gluten / wheat'],
+    ['wheat',             'contains gluten / wheat'],
+    ['flour',             'contains gluten / wheat'],
+    ['soy',               'contains soy'],
+    ['tofu',              'contains soy'],
+    ['edamame',           'contains soy'],
+    ['sesame',            'contains sesame'],
+    ['tahini',            'contains sesame'],
+    ['shellfish',         'contains shellfish'],
+    ['shrimp',            'contains shellfish'],
+    ['prawn',             'contains shellfish'],
+    ['crab',              'contains shellfish'],
+    ['lobster',           'contains shellfish'],
+    ['scallop',           'contains shellfish'],
+    ['mussel',            'contains shellfish'],
+    ['oyster',            'contains shellfish'],
+    ['clam',              'contains shellfish'],
+    [/\bfish\b/i,         'contains fish',            'fish'], // not "shellfish"
+    ['salmon',            'contains fish'],
+    ['tuna',              'contains fish'],
+    [/\bcods?\b/i,        'contains fish',            'cod'],
+    ['anchov',            'contains fish'],            // anchovy / anchovies
+    ['herring',           'contains fish'],
+    ['tilapia',           'contains fish'],
+    ['trout',             'contains fish'],
+    // ── Content & serving ──────────────────────────────────────
+    ['alcohol',           'contains alcohol'],
+    ['wine',              'contains alcohol'],
+    [/\bbeers?\b/i,       'contains alcohol',         'beer'], // not "beef"
+    ['whiskey',           'contains alcohol'],
+    ['whisky',            'contains alcohol'],
+    ['vodka',             'contains alcohol'],
+    [/\brums?\b/i,        'contains alcohol',         'rum'],
+    ['brandy',            'contains alcohol'],
+    ['bourbon',           'contains alcohol'],
+    ['liqueur',           'contains alcohol'],
+    ['pork',              'contains pork'],
+    ['bacon',             'contains pork'],
+    [/\bhams?\b/i,        'contains pork',            'ham'],  // not "graham"
+    ['prosciutto',        'contains pork'],
+    ['pancetta',          'contains pork'],
+    ['chorizo',           'contains pork'],
+    ['salami',            'contains pork'],
+    ['lard',              'contains pork'],
+    ['for kids',          'kid-friendly'],
+    ['for children',      'kid-friendly'],
+    ['spicy',             'spicy'],
+    ['chili',             'spicy'],
+    ['chilli',            'spicy'],
+    ['jalapeño',          'spicy'],
+    ['jalapeno',          'spicy'],
+    ['sriracha',          'spicy'],
+    ['cayenne',           'spicy'],
+    ['habanero',          'spicy'],
+    // ── Dietary preferences ────────────────────────────────────
+    ['vegan',             'vegan'],
+    ['vegetarian',        'vegetarian'],
+    [/\bveggies?\b/i,     'vegetarian',               'veggie'],
+    ['pescatarian',       'pescatarian'],
+    ['kosher',            'kosher'],
+    ['halal',             'halal'],
+    // ── Serving logistics ──────────────────────────────────────
+    ['chilled',           'keep chilled'],
+    ['refrigerat',        'keep chilled'],             // refrigerated / refrigerate
+    ['gf kitchen',        'prepared in a gf kitchen'],
+    [/\bgluten[-\s]+free\s+kitchen\b/i, 'prepared in a gf kitchen', 'gluten'],
+    ['stovetop',          'reheat: stovetop'],
+    ['stove top',         'reheat: stovetop'],
+    [/\bhob\b/i,          'reheat: stovetop',         'hob'],
+    ['oven',              'reheat: oven'],
+    ['bake',              'reheat: oven'],
+    ['microwave',         'reheat: microwave'],
+    ['grill',             'reheat: grill'],
+    ['bbq',               'reheat: grill'],
+    ['barbecue',          'reheat: grill'],
+    ['broil',             'reheat: grill'],
+  ];
+
+  // ── DOM helpers ───────────────────────────────────────────────
+
+  /** Map lowercase tag label → checkbox element, built once from the DOM. */
+  function buildTagMap() {
+    const map = {};
+    document.querySelectorAll('#add-dietary-tags input[type="checkbox"]').forEach(cb => {
+      const lbl = document.querySelector(`label[for="${cb.id}"]`);
+      if (lbl) map[lbl.textContent.trim().toLowerCase()] = cb;
+    });
+    return map;
+  }
+
+  /** Brief outline flash on the tag label to signal auto-selection. */
+  function flashTag(cb) {
+    const lbl = document.querySelector(`label[for="${cb.id}"]`);
+    if (!lbl) return;
+    lbl.classList.remove('tag-auto-flash');
+    void lbl.offsetWidth; // force reflow to restart animation
+    lbl.classList.add('tag-auto-flash');
+    lbl.addEventListener('animationend', () => lbl.classList.remove('tag-auto-flash'), { once: true });
+  }
+
+  /** Sync the "X selected" counter shown in the tag picker header. */
+  function updatePickerCount() {
+    const counter = document.querySelector('#add-dietary-tags [data-tag-selected-count]');
+    if (!counter) return;
+    const n = document.querySelectorAll('#add-dietary-tags input[type="checkbox"]:checked').length;
+    counter.textContent = n + ' selected';
+  }
+
+  // ── Core sync ─────────────────────────────────────────────────
+
+  const notesEl = document.getElementById('notes');
+  if (!notesEl) return;
+
+  const tagMap = buildTagMap();
+
+  /**
+   * IDs of checkboxes we auto-checked — so we only auto-uncheck our own
+   * selections and never override something the user manually ticked.
+   */
+  const autoSelected = new Set();
+
+  function syncTags() {
+    const text = notesEl.value;
+
+    // Collapse suggestions by tag name: true if ANY pattern matches
+    const shouldSelect = {};
+    for (const [pattern, tagName, stem] of SUGGESTIONS) {
+      if (!shouldSelect[tagName]) shouldSelect[tagName] = false;
+      if (termMatches(text, pattern, stem ?? null)) shouldSelect[tagName] = true;
+    }
+
+    let changed = false;
+    for (const [tagName, matched] of Object.entries(shouldSelect)) {
+      const cb = tagMap[tagName.toLowerCase()];
+      if (!cb) continue;
+
+      if (matched && !cb.checked) {
+        cb.checked = true;
+        autoSelected.add(tagName);
+        flashTag(cb);
+        changed = true;
+      } else if (!matched && cb.checked && autoSelected.has(tagName)) {
+        // Only undo auto-selections — leave manual choices alone
+        cb.checked = false;
+        autoSelected.delete(tagName);
+        changed = true;
+      }
+    }
+
+    if (changed) updatePickerCount();
+  }
+
+  // Debounce so we're not running on every single keystroke
+  let timer;
+  notesEl.addEventListener('input', () => {
+    clearTimeout(timer);
+    timer = setTimeout(syncTags, 200);
+  });
+
+})();
+</script>
 {% endblock %}

@@ -32,75 +32,46 @@ CONFIG_CATEGORY_DISH_TYPES = "dish_type"
 CONFIG_CATEGORY_ADMIN_NETWORKS = "admin_network"
 
 TAG_CATEGORY_ORDER = [
-    "Dietary patterns",
-    "Ingredient avoidances",
-    "Preparation and cross-contact",
-    "Additives and content",
-    "Spice and suitability",
-    "Serving logistics",
+    "Allergen warnings",
+    "Dietary preferences",
+    "Content & serving",
 ]
 DEFAULT_TAG_GROUPS = {
-    "Dietary patterns": [
+    "Dietary preferences": [
         "Vegan",
         "Vegetarian",
-        "Vegetarian but not vegan (contains eggs/honey)",
         "Pescatarian",
         "Kosher",
         "Halal",
-        "Keto",
-        "Paleo",
-        "Whole30",
-        "Low-FODMAP",
-        "Low-carb",
-        "Low-sodium",
-        "Low-sugar/Diabetic-friendly",
     ],
-    "Ingredient avoidances": [
-        "Gluten-Free",
-        "Dairy-Free",
-        "Lactose-free (distinct from dairy-free)",
-        "Peanut-free",
-        "Tree-nut-free",
-        "Egg-free",
-        "Soy-free",
-        "Sesame-free",
-        "Shellfish-free",
-        "Fish-free",
-        "Corn-free",
-        "Nightshade-free",
-        "Onion-free",
-        "Garlic-free",
+    "Allergen warnings": [
+        "Contains peanuts",
+        "Contains tree nuts",
+        "Contains dairy",
+        "Contains eggs",
+        "Contains gluten / wheat",
+        "Contains soy",
+        "Contains sesame",
+        "Contains shellfish",
+        "Contains fish",
     ],
-    "Preparation and cross-contact": [
-        "Prepared in GF kitchen",
-        "Shared fryer/oil",
-        "Separate utensils used",
-        "May contain trace allergens",
-        "Contains pork/beef",
-        "Gelatin present",
-    ],
-    "Additives and content": [
+    "Content & serving": [
         "Contains alcohol",
-        "Caffeine present (e.g., tiramisu/coffee desserts)",
-        "Artificial sweeteners",
-        "MSG added",
-    ],
-    "Spice and suitability": [
-        "Mild heat",
-        "Medium heat",
-        "Spicy heat",
+        "Contains pork",
+        "Spicy",
         "Kid-friendly",
-    ],
-    "Serving logistics": [
-        "Requires reheating",
         "Keep chilled",
-        "Contains raw/undercooked ingredients (e.g., cured fish/meat)",
-        "Shelf-stable",
+        "Prepared in a GF kitchen",
+        "Reheat: stovetop",
+        "Reheat: oven",
+        "Reheat: microwave",
+        "Reheat: grill",
     ],
 }
 _CATEGORY_ORDER_LOOKUP = {category: idx for idx, category in enumerate(TAG_CATEGORY_ORDER)}
 CATEGORY_NORMALIZATION = {
-    "Vegetarian but not vegan (contains eggs/honey)": "Dietary patterns",
+    # Legacy category renames — keeps existing rows tidy on upgrade
+    "Vegetarian but not vegan (contains eggs/honey)": "Dietary preferences",
     "Lactose-free (distinct from dairy-free)": "Ingredient avoidances",
 }
 
@@ -112,7 +83,7 @@ def _slugify(text: str) -> str:
     text = re.sub(r"[^\w\s-]", "", text)
     text = re.sub(r"[\s_-]+", "-", text)
     text = re.sub(r"-+", "-", text)
-    return text.strip("-")[:40]
+    return text.strip("-")[:27]
 
 
 def _random_suffix(length: int = 4) -> str:
@@ -588,29 +559,64 @@ def get_tags_by_ids(tag_ids: Sequence[int]) -> List[Tag]:
 
 
 def get_tag_categories() -> List[str]:
-    return list(TAG_CATEGORY_ORDER)
+    """Return ordered categories: predefined first, then any extras found in the DB."""
+    with _get_connection() as conn:
+        rows = conn.execute("SELECT DISTINCT category FROM tags").fetchall()
+    db_cats = {row["category"] for row in rows}
+    result = list(TAG_CATEGORY_ORDER)
+    for cat in sorted(db_cats):
+        if cat not in result:
+            result.append(cat)
+    return result
+
+
+def update_tag(tag_id: int, name: str, category: str) -> None:
+    cleaned = name.strip()
+    cat = category.strip()
+    if not cleaned:
+        raise ValueError("Tag name cannot be empty")
+    if not cat:
+        raise ValueError("Category cannot be empty")
+    with _get_connection() as conn:
+        if conn.execute(
+            "SELECT id FROM tags WHERE LOWER(name) = LOWER(?) AND id != ?",
+            (cleaned, tag_id),
+        ).fetchone():
+            raise ValueError("A tag with that name already exists")
+        conn.execute(
+            "UPDATE tags SET name = ?, category = ? WHERE id = ?",
+            (cleaned, cat, tag_id),
+        )
+
+
+def reset_tags_to_defaults() -> None:
+    """Delete all tags (and their dish associations via CASCADE) then reseed defaults."""
+    with _get_connection() as conn:
+        conn.execute("DELETE FROM tags")
+        _insert_default_tags(conn)
 
 
 def create_tag(name: str, category: str) -> Tag:
     cleaned_name = name.strip()
+    cat = category.strip()
     if not cleaned_name:
         raise ValueError("Tag name cannot be empty")
-    if category.strip() not in TAG_CATEGORY_ORDER:
-        raise ValueError("Unknown category")
+    if not cat:
+        raise ValueError("Category cannot be empty")
     with _get_connection() as conn:
         if conn.execute("SELECT id FROM tags WHERE LOWER(name) = LOWER(?)", (cleaned_name,)).fetchone():
             raise ValueError("That tag already exists")
         row = conn.execute(
             "SELECT COALESCE(MAX(position), -1) AS max_position FROM tags WHERE category = ?",
-            (category.strip(),),
+            (cat,),
         ).fetchone()
         next_position = row["max_position"] + 1
         cursor = conn.execute(
             "INSERT INTO tags (name, category, position) VALUES (?, ?, ?)",
-            (cleaned_name, category.strip(), next_position),
+            (cleaned_name, cat, next_position),
         )
         tag_id = cursor.lastrowid
-    return Tag(id=tag_id, name=cleaned_name, category=category.strip(), position=next_position)
+    return Tag(id=tag_id, name=cleaned_name, category=cat, position=next_position)
 
 
 def delete_tag(tag_id: int) -> None:

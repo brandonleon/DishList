@@ -27,6 +27,8 @@ from .storage import (
     delete_event,
     delete_tag,
     get_dish,
+    reset_tags_to_defaults,
+    update_tag,
     get_event_by_management_token,
     get_event_by_slug,
     get_tag_categories,
@@ -50,9 +52,15 @@ app = FastAPI(title="DishList")
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
-PLANT_BASED_FLAGS = {"vegan", "vegetarian"}
-ALLERGEN_FREE_FLAGS = {"gluten-free", "dairy-free"}
+PLANT_BASED_FLAGS = {"vegan", "vegetarian", "pescatarian"}
 TAG_CATEGORY_CLASSES = {
+    # Current categories
+    "Dietary preferences": "tag-pill-patterns",
+    "Allergen warnings": "tag-pill-avoidances",
+    "Content & serving": "tag-pill-logistics",
+    # Legacy
+    "Allergens": "tag-pill-avoidances",
+    # Legacy category names (kept so old data still renders)
     "Dietary patterns": "tag-pill-patterns",
     "Ingredient avoidances": "tag-pill-avoidances",
     "Preparation and cross-contact": "tag-pill-prep",
@@ -68,8 +76,8 @@ def _dietary_badge_class(flag: str) -> str:
     normalized = flag.strip().lower()
     if normalized in PLANT_BASED_FLAGS:
         return "bg-success-subtle text-success"
-    if normalized in ALLERGEN_FREE_FLAGS:
-        return "bg-info-subtle text-info"
+    if normalized.startswith("contains "):
+        return "bg-warning-subtle text-warning-emphasis"
     return "bg-secondary-subtle text-secondary"
 
 
@@ -633,6 +641,27 @@ def add_tag_action(
     except ValueError as exc:
         return _redirect_to_admin(request, error=str(exc))
     return _redirect_to_admin(request, success="Tag added")
+
+
+@app.post(f"{ADMIN_PATH}/tags/{{tag_id}}")
+def update_tag_action(request: Request, tag_id: int, name: str = Form(...), category: str = Form(...)) -> RedirectResponse:
+    config = get_config()
+    if not _is_ip_allowed(request, config):
+        raise HTTPException(status_code=403, detail="Admin access restricted")
+    try:
+        update_tag(tag_id, name, category)
+    except ValueError as exc:
+        return _redirect_to_admin(request, error=str(exc))
+    return _redirect_to_admin(request, success="Tag updated")
+
+
+@app.post(f"{ADMIN_PATH}/tags/reset")
+def reset_tags_action(request: Request) -> RedirectResponse:
+    config = get_config()
+    if not _is_ip_allowed(request, config):
+        raise HTTPException(status_code=403, detail="Admin access restricted")
+    reset_tags_to_defaults()
+    return _redirect_to_admin(request, success="Tag library reset to defaults")
 
 
 @app.post(f"{ADMIN_PATH}/tags/{{tag_id}}/delete")

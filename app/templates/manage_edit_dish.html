@@ -28,15 +28,8 @@
               {% endfor %}
             </select>
           </div>
-          <div class="mb-3">
-            <label for="allergens" class="form-label">Allergens</label>
-            <textarea class="form-control" id="allergens" name="allergens" rows="2">{{ (dish.allergens or []) | join(', ') }}</textarea>
-          </div>
-          {% with picker_id="edit-dietary-tags", selected_tag_ids=dish.tag_ids, helper_text="Search or scroll to update which tags belong to this dish." %}
-            {% include "partials/tag_picker.html" %}
-          {% endwith %}
           <div class="mb-4">
-            <label for="notes" class="form-label">Notes</label>
+            <label for="notes" class="form-label fw-semibold">Notes</label>
             <textarea class="form-control" id="notes" name="notes" rows="3">{{ dish.notes or '' }}</textarea>
           </div>
           <div class="d-flex justify-content-between align-items-center">

@@ -93,56 +93,98 @@
     <!-- ── Tag library ────────────────────────────────────────── -->
     <div class="card shadow-sm mb-4">
       <div class="card-body p-4">
-        <div class="mb-3">
-          <h2 class="h5 mb-1 fw-semibold">Dietary tag library</h2>
-          <p class="text-muted small mb-0">Curate the dietary notes guests can pick from across all events.</p>
+        <div class="d-flex justify-content-between align-items-start mb-3">
+          <div>
+            <h2 class="h5 mb-1 fw-semibold">Dietary tag library</h2>
+            <p class="text-muted small mb-0">Curate the dietary notes guests can pick from across all events.</p>
+          </div>
+          <form method="post" action="{{ url_for('reset_tags_action') }}"
+                onsubmit="return confirm('Reset to defaults? This removes ALL current tags and their associations from every dish. This cannot be undone.')">
+            <button type="submit" class="btn btn-sm btn-outline-danger">Reset to defaults</button>
+          </form>
         </div>
+
         {% if tag_success %}
           <div class="alert alert-success" role="alert">{{ tag_success }}</div>
         {% endif %}
         {% if tag_error %}
           <div class="alert alert-danger" role="alert">{{ tag_error }}</div>
         {% endif %}
+
+        <!-- Add tag -->
         <form class="row g-3 mb-4 align-items-end" method="post" action="{{ url_for('add_tag_action') }}">
-          <div class="col-md-6">
+          <div class="col-md-5">
             <label for="tag_name" class="form-label">Tag label</label>
-            <input type="text" class="form-control" id="tag_name" name="tag_name" placeholder="e.g., Peanut-free" required />
+            <input type="text" class="form-control" id="tag_name" name="tag_name"
+                   placeholder="e.g., Peanut-free" required />
           </div>
-          <div class="col-md-4">
+          <div class="col-md-5">
             <label for="tag_category" class="form-label">Category</label>
-            <select class="form-select" id="tag_category" name="tag_category" required>
+            <input type="text" class="form-control" id="tag_category" name="tag_category"
+                   list="tag-category-list" placeholder="Pick or type a category" required />
+            <datalist id="tag-category-list">
               {% for category in tag_categories %}
                 <option value="{{ category }}">{{ category }}</option>
               {% endfor %}
-            </select>
+            </datalist>
           </div>
           <div class="col-md-2 d-grid">
             <button type="submit" class="btn btn-primary">Add tag</button>
           </div>
         </form>
+
+        <!-- Tag groups -->
         {% if tag_groups %}
           <div class="tag-admin-groups">
             {% for category, tags in tag_groups %}
               <div class="tag-admin-group mb-4">
                 <div class="d-flex justify-content-between align-items-center mb-2">
                   <h3 class="h6 mb-0">{{ category }}</h3>
-                  <span class="badge text-bg-light">{{ tags | length }} tags</span>
+                  <span class="badge text-bg-light">{{ tags | length }} tag{{ 's' if tags | length != 1 else '' }}</span>
                 </div>
-                {% if tags %}
-                  <div class="d-flex flex-wrap gap-2">
-                    {% for tag in tags %}
-                      <form
-                        class="tag-admin-chip tag-pill {{ tag.category | tag_category_class }}"
-                        method="post"
-                        action="{{ url_for('delete_tag_action', tag_id=tag.id) }}"
-                        onsubmit="return confirm('Remove the &quot;{{ tag.name }}&quot; tag?');"
-                      >
+                <div class="d-flex flex-wrap gap-2">
+                  {% for tag in tags %}
+                    <div id="tag-item-{{ tag.id }}">
+
+                      <!-- view mode -->
+                      <div class="tag-view d-flex align-items-center gap-1 tag-pill {{ tag.category | tag_category_class }}">
                         <span>{{ tag.name }}</span>
-                        <button type="submit" class="btn btn-link btn-sm text-danger p-0 ms-2">Remove</button>
+                        <button type="button"
+                                class="btn btn-link btn-sm p-0 ms-1 lh-1 text-body opacity-60"
+                                style="font-size:.8rem"
+                                onclick="startEditTag({{ tag.id }})"
+                                title="Edit">✎</button>
+                        <form method="post"
+                              action="{{ url_for('delete_tag_action', tag_id=tag.id) }}"
+                              onsubmit="return confirm('Remove &quot;{{ tag.name }}&quot;?');"
+                              class="d-inline lh-1">
+                          <button type="submit"
+                                  class="btn btn-link btn-sm p-0 ms-1 lh-1 text-danger"
+                                  style="font-size:.8rem"
+                                  title="Delete">✕</button>
+                        </form>
+                      </div>
+
+                      <!-- edit mode (hidden) -->
+                      <form id="tag-edit-{{ tag.id }}"
+                            method="post"
+                            action="{{ url_for('update_tag_action', tag_id=tag.id) }}"
+                            class="d-none d-flex align-items-center gap-2 flex-wrap">
+                        <input type="text" name="name" value="{{ tag.name }}"
+                               class="form-control form-control-sm"
+                               style="width:160px" required />
+                        <input type="text" name="category" value="{{ tag.category }}"
+                               list="tag-category-list"
+                               class="form-control form-control-sm"
+                               style="width:180px" required />
+                        <button type="submit" class="btn btn-sm btn-primary">Save</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary"
+                                onclick="cancelEditTag({{ tag.id }})">Cancel</button>
                       </form>
-                    {% endfor %}
-                  </div>
-                {% endif %}
+
+                    </div>
+                  {% endfor %}
+                </div>
               </div>
             {% endfor %}
           </div>
@@ -154,4 +196,25 @@
 
   </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  function startEditTag(id) {
+    const item = document.getElementById('tag-item-' + id);
+    item.querySelector('.tag-view').classList.add('d-none');
+    const form = document.getElementById('tag-edit-' + id);
+    form.classList.remove('d-none');
+    form.classList.add('d-flex');
+    form.querySelector('input[name="name"]').focus();
+  }
+
+  function cancelEditTag(id) {
+    const item = document.getElementById('tag-item-' + id);
+    item.querySelector('.tag-view').classList.remove('d-none');
+    const form = document.getElementById('tag-edit-' + id);
+    form.classList.add('d-none');
+    form.classList.remove('d-flex');
+  }
+</script>
 {% endblock %}
