@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional, Tuple
 
@@ -107,7 +107,7 @@ def _write_config_to_file(config: AppConfig) -> None:
 def _get_file_updated_at() -> Optional[datetime]:
     if not CONFIG_PATH.exists():
         return None
-    return datetime.fromtimestamp(CONFIG_PATH.stat().st_mtime)
+    return datetime.fromtimestamp(CONFIG_PATH.stat().st_mtime, tz=timezone.utc)
 
 
 def _load_config_from_db() -> Optional[Tuple[AppConfig, datetime]]:

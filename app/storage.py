@@ -18,7 +18,7 @@ import re
 import secrets
 import sqlite3
 import string
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Dict, List, Optional, Sequence, Tuple
 
 from .config import AppConfig, DATA_DIR
@@ -372,7 +372,7 @@ def create_event(
     with _get_connection() as conn:
         slug = _make_unique_slug(conn, name, use_random_slug)
         token = _make_unique_token(conn)
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         safe_host = host_name.strip() or "The House"
         cursor = conn.execute(
             """
@@ -865,7 +865,7 @@ def load_app_config_from_db() -> Optional[Tuple[AppConfig, datetime]]:
 
 
 def save_app_config_to_db(config: AppConfig) -> None:
-    timestamp = datetime.utcnow().isoformat()
+    timestamp = datetime.now(timezone.utc).isoformat()
     with _get_connection() as conn:
         conn.execute(
             "DELETE FROM config_entries WHERE category IN (?, ?, ?)",
@@ -901,7 +901,7 @@ def _latest_updated_at(rows: list) -> datetime:
 def _seed_or_migrate_config_entries(conn: sqlite3.Connection) -> None:
     if conn.execute("SELECT COUNT(*) as count FROM config_entries").fetchone()["count"]:
         return
-    timestamp = datetime.utcnow().isoformat()
+    timestamp = datetime.now(timezone.utc).isoformat()
     defaults = AppConfig()
     _bulk_insert_config_entries(conn, CONFIG_CATEGORY_DISH_TYPES, defaults.dish_types, timestamp)
     _bulk_insert_config_entries(conn, CONFIG_CATEGORY_ADMIN_NETWORKS, defaults.admin_networks, timestamp)

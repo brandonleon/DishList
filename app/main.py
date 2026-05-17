@@ -209,15 +209,14 @@ def _get_dish_or_404(dish_id: int) -> DishEntry:
 
 @app.get("/", response_class=HTMLResponse)
 def landing(request: Request) -> HTMLResponse:
-    return templates.TemplateResponse("landing.html", {"request": request})
+    return templates.TemplateResponse(request, "landing.html")
 
 
 @app.get("/create", response_class=HTMLResponse)
 def create_event_form(request: Request) -> HTMLResponse:
     config = get_config()
     return templates.TemplateResponse(
-        "create_event.html",
-        {"request": request, "default_dish_types": config.dish_types},
+        request, "create_event.html", {"default_dish_types": config.dish_types}
     )
 
 
@@ -303,9 +302,9 @@ def event_home(request: Request, slug: str) -> HTMLResponse:
     filtered_guests = _filter_dishes(guest_dishes, search_query) if search_query else guest_dishes
 
     return templates.TemplateResponse(
+        request,
         "home.html",
         {
-            "request": request,
             "event": event,
             "host_dishes": host_dishes,
             "guest_dishes": guest_dishes,
@@ -332,9 +331,9 @@ def event_add_form(request: Request, slug: str) -> HTMLResponse:
     }
     hidden_count = sum(1 for _, tags in tag_groups for tag in tags if tag.is_hidden)
     return templates.TemplateResponse(
+        request,
         "add.html",
         {
-            "request": request,
             "event": event,
             "dish_types": event.dish_types,
             "tag_groups": tag_groups,
@@ -392,7 +391,7 @@ def event_table_rows_partial(request: Request, slug: str, search: str = "") -> H
     guest_dishes = [d for d in all_dishes if not d.is_host_item]
     filtered = _filter_dishes(guest_dishes, search)
     return templates.TemplateResponse(
-        "partials/table_rows.html", {"request": request, "table_dishes": filtered}
+        request, "partials/table_rows.html", {"table_dishes": filtered}
     )
 
 
@@ -403,7 +402,7 @@ def event_card_grid_partial(request: Request, slug: str, search: str = "") -> HT
     guest_dishes = [d for d in all_dishes if not d.is_host_item]
     filtered = _filter_dishes(guest_dishes, search)
     return templates.TemplateResponse(
-        "partials/card_grid.html", {"request": request, "card_dishes": filtered}
+        request, "partials/card_grid.html", {"card_dishes": filtered}
     )
 
 
@@ -419,9 +418,9 @@ def manage_event(request: Request, token: str) -> HTMLResponse:
     tag_success = request.query_params.get("tag_success")
     tag_error = request.query_params.get("tag_error")
     return templates.TemplateResponse(
+        request,
         "manage.html",
         {
-            "request": request,
             "event": event,
             "host_dishes": host_dishes,
             "guest_dishes": guest_dishes,
@@ -522,9 +521,9 @@ def manage_edit_dish_form(request: Request, token: str, dish_id: int) -> HTMLRes
     if dish.event_id != event.id:
         raise HTTPException(status_code=404, detail="Dish not found")
     return templates.TemplateResponse(
+        request,
         "manage_edit_dish.html",
         {
-            "request": request,
             "event": event,
             "dish": dish,
             "dish_types": event.dish_types,
@@ -623,9 +622,9 @@ def admin_page(request: Request) -> HTMLResponse:
     config = get_config()
     _check_admin_access(request, config)
     return templates.TemplateResponse(
+        request,
         "admin.html",
         {
-            "request": request,
             "config": config,
             "events": load_events(),
             "admin_path": ADMIN_PATH,
@@ -642,9 +641,9 @@ def admin_tags_page(request: Request) -> HTMLResponse:
     tag_success = request.query_params.get("tag_success")
     tag_error = request.query_params.get("tag_error")
     return templates.TemplateResponse(
+        request,
         "admin_tags.html",
         {
-            "request": request,
             "admin_path": ADMIN_PATH,
             "tag_groups": load_tag_groups(),
             "tag_categories": get_tag_categories(),
