@@ -97,6 +97,9 @@
 
 <!-- ── Guest submissions ──────────────────────────────────────── -->
 {% if guest_dishes %}
+  <p class="text-muted small mb-4">
+    Need to update a submission? Contact the event host to make changes.
+  </p>
   <form method="get" action="{{ url_for('event_home', slug=event.slug) }}" class="mb-4">
     <input type="hidden" name="view" value="{{ view_mode }}" />
     <label class="form-label fw-semibold" for="dish-search">Search the {{ 'table' if view_mode == 'table' else 'cards' }}</label>

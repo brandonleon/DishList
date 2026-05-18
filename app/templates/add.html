@@ -71,7 +71,11 @@
             {% include "partials/tag_picker.html" %}
           {% endwith %}
 
-          <div class="d-flex justify-content-between align-items-center mt-4">
+          <p class="text-muted small mt-4 mb-2">
+            Need to make changes after submitting? Reach out to the event host to update your entry.
+          </p>
+
+          <div class="d-flex justify-content-between align-items-center mt-2">
             <a class="btn btn-outline-secondary" href="{{ url_for('event_home', slug=event.slug) }}">Cancel</a>
             <button type="submit" class="btn btn-primary btn-lg px-4">Add to the potluck</button>
           </div>
