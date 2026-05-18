@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ipaddress
 import json
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
@@ -53,11 +54,18 @@ STATIC_DIR = BASE_DIR / "static"
 
 ADMIN_PATH = "/pantry-admin"
 
-app = FastAPI(title="DishList")
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    init_db()
+    app.state.config = load_config()
+    yield
+
+
+app = FastAPI(title="DishList", lifespan=_lifespan)
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
-PLANT_BASED_FLAGS = {"vegan", "vegetarian", "pescatarian"}
 TAG_CATEGORY_CLASSES = {
     # Current categories
     "Dietary preferences": "tag-pill-patterns",
@@ -77,20 +85,8 @@ DEFAULT_TAG_CLASS = "tag-pill-generic"
 APP_VERSION = None
 
 
-def _dietary_badge_class(flag: str) -> str:
-    normalized = flag.strip().lower()
-    if normalized in PLANT_BASED_FLAGS:
-        return "bg-success-subtle text-success"
-    if normalized.startswith("contains "):
-        return "bg-warning-subtle text-warning-emphasis"
-    return "bg-secondary-subtle text-secondary"
-
-
 def _tag_category_class(category: str) -> str:
     return TAG_CATEGORY_CLASSES.get(category, DEFAULT_TAG_CLASS)
-
-
-templates.env.filters["dietary_badge_class"] = _dietary_badge_class
 
 
 def _format_dish_timestamp(value: datetime | str) -> str:
@@ -123,12 +119,6 @@ APP_VERSION = _load_app_version()
 templates.env.filters["format_dish_timestamp"] = _format_dish_timestamp
 templates.env.filters["tag_category_class"] = _tag_category_class
 templates.env.globals["app_version"] = APP_VERSION
-
-
-@app.on_event("startup")
-def _startup() -> None:
-    init_db()
-    app.state.config = load_config()
 
 
 def get_config() -> AppConfig:

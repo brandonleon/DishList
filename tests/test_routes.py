@@ -175,18 +175,6 @@ def admin_client(client, monkeypatch):
 # ── Helper function unit tests ─────────────────────────────────────────────────
 
 class TestHelperFunctions:
-    def test_dietary_badge_class_plant_based(self):
-        from app.main import _dietary_badge_class
-        assert "success" in _dietary_badge_class("Vegan")
-
-    def test_dietary_badge_class_contains(self):
-        from app.main import _dietary_badge_class
-        assert "warning" in _dietary_badge_class("Contains peanuts")
-
-    def test_dietary_badge_class_other(self):
-        from app.main import _dietary_badge_class
-        assert "secondary" in _dietary_badge_class("Spicy")
-
     def test_format_dish_timestamp_string_input(self):
         from app.main import _format_dish_timestamp
         assert "Jan" in _format_dish_timestamp("2024-01-15T12:30:00")
