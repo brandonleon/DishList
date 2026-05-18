@@ -89,6 +89,27 @@ docker run -d --name dishlist -p 8000:8000 \
 
 Mount `data/` to persist the database and config between runs. Override the port with `-e PORT=8080`.
 
+### Docker Compose
+
+```bash
+docker compose up --build --detach
+```
+
+A `Justfile` is included for server-side deployments:
+
+```bash
+just deploy   # git pull + docker compose up --build --detach
+just stop     # docker compose down
+just logs     # follow container logs
+just ps       # show container status
+```
+
+### Reverse proxy / HTTPS
+
+DishList is configured to run behind a reverse proxy (e.g. Nginx Proxy Manager). The server automatically trusts `X-Forwarded-Proto` and `X-Forwarded-For` headers, so URLs and redirects work correctly over HTTPS without any extra configuration.
+
+Ensure your proxy passes the standard forwarded headers. Nginx Proxy Manager does this by default.
+
 ### Admin commands in Docker
 
 Run any `dishlist admin` command against a running container by exec-ing into it — or as a one-shot against the same data volume:
