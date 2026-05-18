@@ -573,5 +573,12 @@ class TestAdminRoutes:
     def test_admin_page_disabled_404(self, client):
         """Admin is off by default; web_admin_enabled=False → 404."""
         from app.main import app as fastapi_app
-        fastapi_app.state.config = AppConfig(web_admin_enabled=False)
-        assert client.get("/pantry-admin").status_code == 404
+        original = getattr(fastapi_app.state, "config", None)
+        try:
+            fastapi_app.state.config = AppConfig(web_admin_enabled=False)
+            assert client.get("/pantry-admin").status_code == 404
+        finally:
+            if original is None:
+                del fastapi_app.state.config
+            else:
+                fastapi_app.state.config = original
