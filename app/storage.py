@@ -229,8 +229,6 @@ def init_db() -> None:
                 contributor TEXT NOT NULL,
                 dish_name TEXT NOT NULL,
                 dish_type TEXT NOT NULL,
-                allergens TEXT NOT NULL,
-                dietary_flags TEXT NOT NULL,
                 notes TEXT,
                 is_host_item INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL,
@@ -317,6 +315,12 @@ def init_db() -> None:
             conn.execute("ALTER TABLE tags ADD COLUMN is_hidden INTEGER NOT NULL DEFAULT 0")
         except sqlite3.OperationalError:
             pass  # Column already exists
+        # Drop legacy fields superseded by the tag system
+        for col in ("allergens", "dietary_flags"):
+            try:
+                conn.execute(f"ALTER TABLE dishes DROP COLUMN {col}")
+            except sqlite3.OperationalError:
+                pass  # Already dropped or never existed
         _seed_or_migrate_config_entries(conn)
         _seed_or_migrate_tags(conn)
         _seed_or_migrate_keywords(conn)
@@ -471,15 +475,12 @@ def delete_event(event_id: int) -> None:
 
 def _row_to_entry(row: sqlite3.Row, tags: Optional[List[Tag]] = None) -> DishEntry:
     tag_list = tags or []
-    dietary_flags = [tag.name for tag in tag_list] if tag_list else json.loads(row["dietary_flags"])
     return DishEntry(
         id=row["id"],
         event_id=row["event_id"],
         contributor=row["contributor"],
         dish_name=row["dish_name"],
         dish_type=row["dish_type"],
-        allergens=json.loads(row["allergens"]),
-        dietary_flags=dietary_flags,
         tag_ids=[tag.id for tag in tag_list],
         tags=tag_list,
         notes=row["notes"],
@@ -536,8 +537,8 @@ def load_dishes_for_event(event_id: int) -> List[DishEntry]:
     with _get_connection() as conn:
         rows = conn.execute(
             """
-            SELECT id, event_id, contributor, dish_name, dish_type, allergens,
-                   dietary_flags, notes, is_host_item, created_at
+            SELECT id, event_id, contributor, dish_name, dish_type,
+                   notes, is_host_item, created_at
             FROM dishes
             WHERE event_id = ?
             ORDER BY is_host_item DESC, datetime(created_at) ASC, id ASC
@@ -553,8 +554,8 @@ def load_all_dishes() -> List[DishEntry]:
     with _get_connection() as conn:
         rows = conn.execute(
             """
-            SELECT id, event_id, contributor, dish_name, dish_type, allergens,
-                   dietary_flags, notes, is_host_item, created_at
+            SELECT id, event_id, contributor, dish_name, dish_type,
+                   notes, is_host_item, created_at
             FROM dishes
             ORDER BY datetime(created_at) DESC, id DESC
             """
@@ -567,8 +568,8 @@ def get_dish(dish_id: int) -> Optional[DishEntry]:
     with _get_connection() as conn:
         row = conn.execute(
             """
-            SELECT id, event_id, contributor, dish_name, dish_type, allergens,
-                   dietary_flags, notes, is_host_item, created_at
+            SELECT id, event_id, contributor, dish_name, dish_type,
+                   notes, is_host_item, created_at
             FROM dishes WHERE id = ?
             """,
             (dish_id,),
@@ -582,17 +583,15 @@ def add_dish(entry: DishEntry) -> int:
     with _get_connection() as conn:
         cursor = conn.execute(
             """
-            INSERT INTO dishes (event_id, contributor, dish_name, dish_type, allergens,
-                                dietary_flags, notes, is_host_item, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO dishes (event_id, contributor, dish_name, dish_type,
+                                notes, is_host_item, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 entry.event_id,
                 entry.contributor,
                 entry.dish_name,
                 entry.dish_type,
-                json.dumps(entry.allergens),
-                json.dumps(entry.dietary_flags),
                 entry.notes,
                 1 if entry.is_host_item else 0,
                 entry.created_at.isoformat(),
@@ -608,16 +607,13 @@ def update_dish(dish_id: int, entry: DishEntry) -> None:
         conn.execute(
             """
             UPDATE dishes
-            SET contributor = ?, dish_name = ?, dish_type = ?, allergens = ?,
-                dietary_flags = ?, notes = ?, created_at = ?
+            SET contributor = ?, dish_name = ?, dish_type = ?, notes = ?, created_at = ?
             WHERE id = ?
             """,
             (
                 entry.contributor,
                 entry.dish_name,
                 entry.dish_type,
-                json.dumps(entry.allergens),
-                json.dumps(entry.dietary_flags),
                 entry.notes,
                 entry.created_at.isoformat(),
                 dish_id,

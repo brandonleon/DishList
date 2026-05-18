@@ -135,12 +135,6 @@ def get_config() -> AppConfig:
     return getattr(app.state, "config", load_config())
 
 
-def _parse_allergens(raw: Optional[str]) -> List[str]:
-    if not raw:
-        return []
-    return [chunk.strip() for chunk in raw.split(",") if chunk.strip()]
-
-
 def _normalize_tag_ids(raw_ids: List[int]) -> List[int]:
     return list(dict.fromkeys(raw_ids))
 
@@ -153,7 +147,7 @@ def _filter_dishes(dishes: List[DishEntry], query: str) -> List[DishEntry]:
     for dish in dishes:
         searchable = [
             dish.dish_name, dish.contributor, dish.dish_type,
-            dish.notes or "", ", ".join(dish.allergens), ", ".join(dish.dietary_flags),
+            dish.notes or "",
         ]
         if any(search in chunk.lower() for chunk in searchable if chunk):
             filtered.append(dish)
@@ -350,7 +344,6 @@ def event_add_submission(
     contributor: str = Form(..., min_length=1, max_length=80),
     dish_name: str = Form(..., min_length=1, max_length=120),
     dish_type: str = Form(...),
-    allergens: Optional[str] = Form(None),
     notes: Optional[str] = Form(None),
     dietary_tags: List[int] = Form(default=[]),
 ) -> RedirectResponse:
@@ -371,8 +364,6 @@ def event_add_submission(
             contributor=contributor.strip(),
             dish_name=dish_name.strip(),
             dish_type=dish_type,
-            allergens=_parse_allergens(allergens),
-            dietary_flags=[tag.name for tag in tags],
             tag_ids=[tag.id for tag in tags],
             tags=tags,
             notes=notes.strip() if notes else None,
@@ -478,7 +469,6 @@ def add_host_item(
     token: str,
     dish_name: str = Form(..., min_length=1, max_length=120),
     dish_type: str = Form(...),
-    allergens: Optional[str] = Form(None),
     notes: Optional[str] = Form(None),
 ) -> RedirectResponse:
     event = _get_event_by_token_or_404(token)
@@ -490,7 +480,6 @@ def add_host_item(
             contributor=event.host_name,
             dish_name=dish_name.strip(),
             dish_type=dish_type,
-            allergens=_parse_allergens(allergens),
             notes=notes.strip() if notes else None,
             is_host_item=True,
         )
@@ -550,7 +539,6 @@ def manage_edit_dish_submit(
     contributor: str = Form(..., min_length=1, max_length=80),
     dish_name: str = Form(..., min_length=1, max_length=120),
     dish_type: str = Form(...),
-    allergens: Optional[str] = Form(None),
     notes: Optional[str] = Form(None),
     dietary_tags: List[int] = Form(default=[]),
 ) -> RedirectResponse:
@@ -573,8 +561,6 @@ def manage_edit_dish_submit(
                 "contributor": contributor.strip(),
                 "dish_name": dish_name.strip(),
                 "dish_type": dish_type,
-                "allergens": _parse_allergens(allergens),
-                "dietary_flags": [tag.name for tag in tags],
                 "tag_ids": [tag.id for tag in tags],
                 "tags": tags,
                 "notes": notes.strip() if notes else None,

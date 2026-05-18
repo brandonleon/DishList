@@ -18,8 +18,6 @@ class DishEntry(BaseModel):
     contributor: str = Field(..., min_length=1, max_length=80)
     dish_name: str = Field(..., min_length=1, max_length=120)
     dish_type: str
-    allergens: List[str] = Field(default_factory=list)
-    dietary_flags: List[str] = Field(default_factory=list)
     tag_ids: List[int] = Field(default_factory=list)
     tags: List["Tag"] = Field(default_factory=list)
     notes: Optional[str] = None

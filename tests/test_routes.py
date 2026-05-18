@@ -175,14 +175,6 @@ def admin_client(client, monkeypatch):
 # ── Helper function unit tests ─────────────────────────────────────────────────
 
 class TestHelperFunctions:
-    def test_parse_allergens_none_returns_empty(self):
-        from app.main import _parse_allergens
-        assert _parse_allergens(None) == []
-
-    def test_parse_allergens_empty_string_returns_empty(self):
-        from app.main import _parse_allergens
-        assert _parse_allergens("") == []
-
     def test_dietary_badge_class_plant_based(self):
         from app.main import _dietary_badge_class
         assert "success" in _dietary_badge_class("Vegan")
