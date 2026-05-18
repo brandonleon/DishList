@@ -200,12 +200,26 @@
                 <td class="fw-semibold">{{ dish.dish_name }}</td>
                 <td>{{ dish.dish_type }}</td>
                 <td>{{ dish.contributor }}</td>
-                <td>{{ dish.allergens | join(', ') or '—' }}</td>
                 <td>
-                  {% set tags = dish.tags or [] %}
-                  {% if tags %}
+                  {% set allergen_tags = dish.tags | selectattr('category', 'equalto', 'Allergen warnings') | list %}
+                  {% if dish.allergens or allergen_tags %}
                     <div class="d-flex flex-wrap gap-1">
-                      {% for tag in tags %}
+                      {% for a in dish.allergens %}
+                        <span class="badge tag-pill tag-pill-avoidances">{{ a }}</span>
+                      {% endfor %}
+                      {% for tag in allergen_tags %}
+                        <span class="badge tag-pill tag-pill-avoidances">{{ tag.name }}</span>
+                      {% endfor %}
+                    </div>
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
+                <td>
+                  {% set dietary_tags = dish.tags | rejectattr('category', 'equalto', 'Allergen warnings') | list %}
+                  {% if dietary_tags %}
+                    <div class="d-flex flex-wrap gap-1">
+                      {% for tag in dietary_tags %}
                         <span class="badge tag-pill {{ tag.category | tag_category_class }}">{{ tag.name }}</span>
                       {% endfor %}
                     </div>

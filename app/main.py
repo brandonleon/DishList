@@ -520,6 +520,14 @@ def manage_edit_dish_form(request: Request, token: str, dish_id: int) -> HTMLRes
     dish = _get_dish_or_404(dish_id)
     if dish.event_id != event.id:
         raise HTTPException(status_code=404, detail="Dish not found")
+    tag_groups = load_tag_groups()
+    tag_kw_map = {
+        tag.id: tag.keywords
+        for _, tags in tag_groups
+        for tag in tags
+        if tag.keywords
+    }
+    hidden_count = sum(1 for _, tags in tag_groups for tag in tags if tag.is_hidden)
     return templates.TemplateResponse(
         request,
         "manage_edit_dish.html",
@@ -527,7 +535,9 @@ def manage_edit_dish_form(request: Request, token: str, dish_id: int) -> HTMLRes
             "event": event,
             "dish": dish,
             "dish_types": event.dish_types,
-            "tag_groups": load_tag_groups(),
+            "tag_groups": tag_groups,
+            "tag_keywords_json": json.dumps(tag_kw_map),
+            "hidden_tag_count": hidden_count,
         },
     )
 
