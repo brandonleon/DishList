@@ -1,7 +1,16 @@
 {% if table_dishes %}
   {% for dish in table_dishes %}
     <tr>
-      <td class="fw-semibold">{{ dish.dish_name }}</td>
+      <td>
+        <span class="fw-semibold">{{ dish.dish_name }}</span>
+        {% if dish.tags %}
+          <div class="d-flex flex-wrap gap-1 mt-1">
+            {% for tag in dish.tags %}
+              <span class="badge tag-pill {{ tag.category | tag_category_class }}">{{ tag.name }}</span>
+            {% endfor %}
+          </div>
+        {% endif %}
+      </td>
       <td>{{ dish.dish_type }}</td>
       <td>{{ dish.contributor }}</td>
       <td>{{ dish.notes or '—' }}</td>

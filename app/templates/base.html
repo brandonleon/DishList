@@ -55,6 +55,83 @@
       crossorigin="anonymous"
     ></script>
     <script src="{{ url_for('static', path='tag-picker.js') }}?v={{ app_version }}"></script>
+    <script>
+    (function () {
+      const blobs = [
+        { color: 'rgba(136, 192, 208, 0.38)', w: 90,  h: 75 },
+        { color: 'rgba(180, 142, 173, 0.32)', w: 85,  h: 70 },
+        { color: 'rgba(129, 161, 193, 0.32)', w: 90,  h: 70 },
+        { color: 'rgba(163, 190, 140, 0.28)', w: 100, h: 80 },
+      ].map((cfg, i) => {
+        const el = document.createElement('div');
+        el.className = 'bg-blob';
+        el.style.width  = cfg.w + 'vw';
+        el.style.height = cfg.h + 'vh';
+        el.style.backgroundColor = cfg.color;
+        el.style.zIndex = i;
+        document.body.appendChild(el);
+        return { el, x: 0, y: 0, tx: 0, ty: 0, cx: 0, cy: 0, w: cfg.w, h: cfg.h, color: cfg.color  };
+      });
+
+      // Quadrant centers in viewport % — blob centers anchor here
+      const QUADRANTS = [
+        { qx: 25, qy: 25 }, // top-left
+        { qx: 75, qy: 25 }, // top-right
+        { qx: 25, qy: 75 }, // bottom-left
+        { qx: 75, qy: 75 }, // bottom-right
+      ];
+
+      function assignQuadrants(order) {
+        order.forEach((blobIdx, qi) => {
+          const b = blobs[blobIdx];
+          const q = QUADRANTS[qi];
+          b.cx = q.qx - b.w / 2;
+          b.cy = q.qy - b.h / 2;
+        });
+      }
+
+      // Start each blob in its quadrant
+      let quadOrder = [0, 1, 2, 3];
+      assignQuadrants(quadOrder);
+      blobs.forEach(b => { b.x = b.cx; b.y = b.cy; b.tx = b.cx; b.ty = b.cy; });
+
+      // Pick 2 random blobs and smoothly crossfade their colors
+      function swapColors() {
+        const [i, j] = [0, 1, 2, 3].sort(() => Math.random() - 0.5).slice(0, 2);
+        const a = blobs[i], b = blobs[j];
+        const tmp = a.color;
+        a.color = b.color;
+        b.color = tmp;
+        a.el.style.backgroundColor = a.color;
+        b.el.style.backgroundColor = b.color;
+        setTimeout(swapColors, 20000 + Math.random() * 20000);
+      }
+      setTimeout(swapColors, 15000 + Math.random() * 10000);
+
+      const EASE  = 0.0004;
+      const DRIFT = 0.18;
+      const PULL  = 0.008;
+      let last = performance.now();
+
+      function tick(now) {
+        const dt = Math.min(now - last, 50);
+        last = now;
+        const step = dt / 16;
+        blobs.forEach(b => {
+          b.tx += (Math.random() - 0.5) * DRIFT * step;
+          b.ty += (Math.random() - 0.5) * DRIFT * step;
+          b.tx += (b.cx - b.tx) * PULL * step;
+          b.ty += (b.cy - b.ty) * PULL * step;
+          b.x += (b.tx - b.x) * EASE * dt;
+          b.y += (b.ty - b.y) * EASE * dt;
+          b.el.style.transform = `translate(${b.x}vw, ${b.y}vh)`;
+        });
+        requestAnimationFrame(tick);
+      }
+
+      requestAnimationFrame(tick);
+    })();
+    </script>
     {% block extra_js %}{% endblock %}
   </body>
 </html>

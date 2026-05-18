@@ -11,7 +11,14 @@
             <span class="badge bg-primary-subtle text-primary flex-shrink-0 ms-2">{{ dish.contributor }}</span>
           </div>
           {% if dish.notes %}
-            <p class="small text-secondary mb-0 mt-2">{{ dish.notes }}</p>
+            <p class="small text-secondary mb-2 mt-2">{{ dish.notes }}</p>
+          {% endif %}
+          {% if dish.tags %}
+            <div class="d-flex flex-wrap gap-1 mt-auto">
+              {% for tag in dish.tags %}
+                <span class="badge tag-pill {{ tag.category | tag_category_class }}">{{ tag.name }}</span>
+              {% endfor %}
+            </div>
           {% endif %}
         </div>
         <div class="card-footer text-muted small">

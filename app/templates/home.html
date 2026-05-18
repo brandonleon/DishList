@@ -80,8 +80,13 @@
             {% if dish.notes %}
               <p class="small text-secondary mb-2">{{ dish.notes }}</p>
             {% endif %}
-
-
+            {% if dish.tags %}
+              <div class="d-flex flex-wrap gap-1">
+                {% for tag in dish.tags %}
+                  <span class="badge tag-pill {{ tag.category | tag_category_class }}">{{ tag.name }}</span>
+                {% endfor %}
+              </div>
+            {% endif %}
           </div>
         </div>
       </div>
