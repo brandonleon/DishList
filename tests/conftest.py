@@ -5,10 +5,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.storage import (
-    DB_PATH,
-    _get_connection,
     init_db,
-    reset_tags_to_defaults,
 )
 
 

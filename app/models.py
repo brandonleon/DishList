@@ -35,7 +35,7 @@ class Tag(BaseModel):
 
 
 class Event(BaseModel):
-    id: Optional[int] = None
+    id: int
     slug: str
     management_token: str
     name: str = Field(..., min_length=1, max_length=120)

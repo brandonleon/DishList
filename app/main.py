@@ -9,10 +9,7 @@ from typing import List, Optional
 from urllib.parse import urlencode
 from importlib import metadata
 
-try:
-    import tomllib
-except ModuleNotFoundError:  # pragma: no cover
-    tomllib = None  # type: ignore
+import tomllib
 
 from fastapi import FastAPI, Form, HTTPException, Request, status
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
@@ -30,9 +27,7 @@ from .storage import (
     delete_tag,
     get_dish,
     get_tag_counts,
-    load_tags,
     reset_tags_to_defaults,
-    set_tag_keywords,
     toggle_tag_visibility,
     update_tag,
     get_event_by_management_token,
@@ -40,7 +35,6 @@ from .storage import (
     get_tag_categories,
     get_tags_by_ids,
     init_db,
-    load_all_dishes,
     load_dishes_for_event,
     load_events,
     load_tag_groups,
@@ -108,7 +102,7 @@ APP_VERSION = _load_app_version()
 
 templates.env.filters["format_dish_timestamp"] = _format_dish_timestamp
 templates.env.filters["tag_category_class"] = _tag_category_class
-templates.env.globals["app_version"] = APP_VERSION
+templates.env.globals["app_version"] = APP_VERSION  # type: ignore
 
 
 def get_config() -> AppConfig:
@@ -666,7 +660,7 @@ def add_tag_action(
 ) -> RedirectResponse:
     config = get_config()
     _check_admin_access(request, config)
-    keywords = [kw.strip() for kw in (tag_keywords or "").split(",") if kw.strip()]
+    keywords: List[str] = [kw.strip() for kw in (tag_keywords or "").split(",") if kw.strip()]
     try:
         create_tag(tag_name, tag_category, keywords=keywords or None, is_hidden=tag_is_hidden is not None)
     except ValueError as exc:
@@ -693,7 +687,7 @@ def update_tag_action(
 ) -> RedirectResponse:
     config = get_config()
     _check_admin_access(request, config)
-    keyword_list = [kw.strip() for kw in (keywords or "").split(",") if kw.strip()]
+    keyword_list: List[str] = [kw.strip() for kw in (keywords or "").split(",") if kw.strip()]
     try:
         update_tag(tag_id, name, category, keywords=keyword_list, is_hidden=is_hidden is not None)
     except ValueError as exc:

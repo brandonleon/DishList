@@ -138,7 +138,9 @@ class TestLoadConfig:
             result = load_config()
 
         assert result == file_cfg
-        assert storage_mod.load_app_config_from_db()[0] == file_cfg
+        db_result = storage_mod.load_app_config_from_db()
+        assert db_result is not None
+        assert db_result[0] == file_cfg
 
     def test_both_file_newer_same_skips_db_write(self, isolated_db, config_path):
         cfg = AppConfig(dish_types=["Main"])

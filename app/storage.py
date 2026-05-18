@@ -378,6 +378,7 @@ def create_event(
             (slug, token, name.strip(), description or None, event_date or None, safe_host, json.dumps(dish_types), now),
         )
         event_id = cursor.lastrowid
+        assert event_id is not None
 
     parsed_date = None
     if event_date:
@@ -581,6 +582,7 @@ def add_dish(entry: DishEntry) -> int:
             ),
         )
         dish_id = cursor.lastrowid
+        assert dish_id is not None
         _replace_dish_tags(conn, dish_id, entry.tag_ids)
     return dish_id
 
@@ -802,6 +804,7 @@ def create_tag(
             (cleaned_name, cat, next_position, 1 if is_hidden else 0),
         )
         tag_id = cursor.lastrowid
+        assert tag_id is not None
         kw_list: List[str] = []
         if keywords:
             kw_list = [kw.strip().lower() for kw in keywords if kw.strip()]
@@ -923,6 +926,7 @@ def _add_missing_default_tags(conn: sqlite3.Connection) -> None:
             (name, category, row["mp"] + 1, 1 if is_hidden else 0),
         )
         tag_id = cursor.lastrowid
+        assert tag_id is not None
         kws = DEFAULT_TAG_KEYWORDS.get(name, [])
         if kws:
             _set_tag_keywords_conn(conn, tag_id, kws)
@@ -938,6 +942,7 @@ def _insert_default_tags(conn: sqlite3.Connection) -> None:
                 (name, category, position),
             )
             tag_id = cursor.lastrowid
+            assert tag_id is not None
             kws = DEFAULT_TAG_KEYWORDS.get(name, [])
             if kws:
                 _set_tag_keywords_conn(conn, tag_id, kws)
@@ -952,6 +957,7 @@ def _insert_default_tags(conn: sqlite3.Connection) -> None:
                 (name, category, row["mp"] + 1),
             )
             tag_id = cursor.lastrowid
+            assert tag_id is not None
             kws = DEFAULT_TAG_KEYWORDS.get(name, [])
             if kws:
                 _set_tag_keywords_conn(conn, tag_id, kws)

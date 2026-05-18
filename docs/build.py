@@ -14,7 +14,7 @@ import re
 import sys
 import urllib.request
 
-import markdown
+import markdown  # type: ignore
 
 HERE = pathlib.Path(__file__).parent
 

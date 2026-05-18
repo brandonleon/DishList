@@ -1,11 +1,11 @@
 """Integration tests for the FastAPI routes via TestClient."""
 
 import pytest
-from datetime import datetime, timezone
+from datetime import datetime
 from unittest.mock import MagicMock
 
 from app.config import AppConfig
-from app.storage import create_event, load_tags, get_tag_counts
+from app.storage import load_tags
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -54,10 +54,9 @@ class TestPublicRoutes:
 class TestEventRoutes:
     def test_event_home_200(self, client):
         token = _create_event(client)
-        slug = client.get(f"/manage/{token}", follow_redirects=True).url.path
-        # Derive slug from manage page
         from app.storage import get_event_by_management_token
         event = get_event_by_management_token(token)
+        assert event is not None
         resp = client.get(f"/e/{event.slug}")
         assert resp.status_code == 200
 
@@ -68,6 +67,7 @@ class TestEventRoutes:
         token = _create_event(client)
         from app.storage import get_event_by_management_token
         event = get_event_by_management_token(token)
+        assert event is not None
         resp = client.get(f"/e/{event.slug}/add")
         assert resp.status_code == 200
 
@@ -76,6 +76,7 @@ class TestEventRoutes:
         token = _create_event(client)
         from app.storage import get_event_by_management_token
         event = get_event_by_management_token(token)
+        assert event is not None
         html = client.get(f"/e/{event.slug}/add").text
         # All hidden tag option divs must carry d-none
         import re
@@ -91,6 +92,7 @@ class TestEventRoutes:
         token = _create_event(client)
         from app.storage import get_event_by_management_token
         event = get_event_by_management_token(token)
+        assert event is not None
         resp = client.post(f"/e/{event.slug}/add", data={
             "contributor": "Alice",
             "dish_name": "Pasta",
@@ -102,6 +104,7 @@ class TestEventRoutes:
         token = _create_event(client)
         from app.storage import get_event_by_management_token
         event = get_event_by_management_token(token)
+        assert event is not None
         resp = client.post(f"/e/{event.slug}/add", data={
             "contributor": "Alice",
             "dish_name": "Pasta",
@@ -130,6 +133,7 @@ class TestManageRoutes:
         assert resp.status_code == 303
         from app.storage import get_event_by_management_token
         event = get_event_by_management_token(token)
+        assert event is not None
         assert event.name == "Updated Name"
 
 
@@ -140,15 +144,18 @@ class TestTagKeywordsInAddForm:
         token = _create_event(client)
         from app.storage import get_event_by_management_token
         event = get_event_by_management_token(token)
+        assert event is not None
         html = client.get(f"/e/{event.slug}/add").text
         assert "const TAG_KEYWORDS" in html
 
     def test_hidden_tag_keywords_included(self, client):
         """Hidden tags' keywords must be in TAG_KEYWORDS for auto-detection."""
-        import json, re
+        import json
+        import re
         token = _create_event(client)
         from app.storage import get_event_by_management_token
         event = get_event_by_management_token(token)
+        assert event is not None
         html = client.get(f"/e/{event.slug}/add").text
         match = re.search(r"const TAG_KEYWORDS = ({.*?});", html, re.DOTALL)
         assert match, "TAG_KEYWORDS not found in page"
@@ -292,6 +299,7 @@ class TestEventViewModes:
         token = _create_event(client)
         from app.storage import get_event_by_management_token
         event = get_event_by_management_token(token)
+        assert event is not None
         resp = client.get(f"/e/{event.slug}?view=bogus")
         assert resp.status_code == 200
 
@@ -299,6 +307,7 @@ class TestEventViewModes:
         token = _create_event(client)
         from app.storage import get_event_by_management_token
         event = get_event_by_management_token(token)
+        assert event is not None
         # Deactivate via manage POST
         client.post(f"/manage/{token}", data={
             "name": event.name,
@@ -312,6 +321,7 @@ class TestEventViewModes:
         token = _create_event(client)
         from app.storage import get_event_by_management_token
         event = get_event_by_management_token(token)
+        assert event is not None
         client.post(f"/manage/{token}", data={
             "name": event.name,
             "dish_types_input": "\n".join(event.dish_types),
@@ -328,6 +338,7 @@ class TestEventViewModes:
         token = _create_event(client)
         from app.storage import get_event_by_management_token
         event = get_event_by_management_token(token)
+        assert event is not None
         resp = client.post(f"/e/{event.slug}/add", data={
             "contributor": "Alice",
             "dish_name": "Pasta",
@@ -344,18 +355,21 @@ class TestPartialRoutes:
         token = _create_event(client)
         from app.storage import get_event_by_management_token
         event = get_event_by_management_token(token)
+        assert event is not None
         assert client.get(f"/e/{event.slug}/table/rows").status_code == 200
 
     def test_card_grid_partial_200(self, client):
         token = _create_event(client)
         from app.storage import get_event_by_management_token
         event = get_event_by_management_token(token)
+        assert event is not None
         assert client.get(f"/e/{event.slug}/cards/grid").status_code == 200
 
     def test_table_rows_with_search(self, client):
         token = _create_event(client)
         from app.storage import get_event_by_management_token
         event = get_event_by_management_token(token)
+        assert event is not None
         assert client.get(f"/e/{event.slug}/table/rows?search=pasta").status_code == 200
 
 
@@ -386,6 +400,7 @@ class TestManageSubRoutes:
         })
         from app.storage import get_event_by_management_token, load_dishes_for_event
         event = get_event_by_management_token(token)
+        assert event is not None
         host_dish = next(d for d in load_dishes_for_event(event.id) if d.dish_name == "Host Bread")
         resp = client.post(f"/manage/{token}/host-items/{host_dish.id}/delete", follow_redirects=False)
         assert resp.status_code == 303
@@ -394,6 +409,7 @@ class TestManageSubRoutes:
         token = _create_event(client)
         from app.storage import get_event_by_management_token, load_dishes_for_event
         event = get_event_by_management_token(token)
+        assert event is not None
         client.post(f"/e/{event.slug}/add", data={
             "contributor": "Alice", "dish_name": "Pasta", "dish_type": "Main",
         })
@@ -404,6 +420,7 @@ class TestManageSubRoutes:
         token = _create_event(client)
         from app.storage import get_event_by_management_token, load_dishes_for_event
         event = get_event_by_management_token(token)
+        assert event is not None
         client.post(f"/e/{event.slug}/add", data={
             "contributor": "Alice", "dish_name": "Pasta", "dish_type": "Main",
         })
@@ -419,6 +436,7 @@ class TestManageSubRoutes:
         token = _create_event(client)
         from app.storage import get_event_by_management_token, load_dishes_for_event
         event = get_event_by_management_token(token)
+        assert event is not None
         client.post(f"/e/{event.slug}/add", data={
             "contributor": "Alice", "dish_name": "Pasta", "dish_type": "Main",
         })
@@ -434,6 +452,7 @@ class TestManageSubRoutes:
         token = _create_event(client)
         from app.storage import get_event_by_management_token, load_dishes_for_event
         event = get_event_by_management_token(token)
+        assert event is not None
         client.post(f"/e/{event.slug}/add", data={
             "contributor": "Alice", "dish_name": "Pasta", "dish_type": "Main",
         })
@@ -519,7 +538,6 @@ class TestAdminRoutes:
     def test_update_tag_action_conflict_redirects_with_error(self, admin_client):
         tags = load_tags()
         vegan = next(t for t in tags if t.name == "Vegan")
-        vegetarian = next(t for t in tags if t.name == "Vegetarian")
         # Try to rename vegan to vegetarian (conflict)
         resp = admin_client.post(f"/pantry-admin/tags/{vegan.id}", data={
             "name": "Vegetarian",
@@ -547,6 +565,7 @@ class TestAdminRoutes:
         token = _create_event(admin_client)
         from app.storage import get_event_by_management_token
         event = get_event_by_management_token(token)
+        assert event is not None
         resp = admin_client.post(f"/pantry-admin/events/{event.id}/delete", follow_redirects=False)
         assert resp.status_code == 303
 
