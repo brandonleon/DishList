@@ -698,6 +698,14 @@ def add_tag_action(
     return _redirect_to_admin_tags(request, success="Tag added")
 
 
+@app.post(f"{ADMIN_PATH}/tags/reset")
+def reset_tags_action(request: Request) -> RedirectResponse:
+    config = get_config()
+    _check_admin_access(request, config)
+    reset_tags_to_defaults()
+    return _redirect_to_admin_tags(request, success="Tag library reset to defaults")
+
+
 @app.post(f"{ADMIN_PATH}/tags/{{tag_id}}")
 def update_tag_action(
     request: Request,
@@ -715,14 +723,6 @@ def update_tag_action(
     except ValueError as exc:
         return _redirect_to_admin_tags(request, error=str(exc))
     return _redirect_to_admin_tags(request, success="Tag updated")
-
-
-@app.post(f"{ADMIN_PATH}/tags/reset")
-def reset_tags_action(request: Request) -> RedirectResponse:
-    config = get_config()
-    _check_admin_access(request, config)
-    reset_tags_to_defaults()
-    return _redirect_to_admin_tags(request, success="Tag library reset to defaults")
 
 
 @app.post(f"{ADMIN_PATH}/tags/{{tag_id}}/delete")

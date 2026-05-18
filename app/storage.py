@@ -18,8 +18,9 @@ import re
 import secrets
 import sqlite3
 import string
+from contextlib import contextmanager
 from datetime import date, datetime, timezone
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, Generator, List, Optional, Sequence, Tuple
 
 from .config import AppConfig, DATA_DIR
 from .models import DishEntry, Event, Tag
@@ -174,12 +175,20 @@ def _generate_management_token() -> str:
     return secrets.token_urlsafe(32)
 
 
-def _get_connection() -> sqlite3.Connection:
+@contextmanager
+def _get_connection() -> Generator[sqlite3.Connection, None, None]:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
-    return conn
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def init_db() -> None:
