@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block nav_actions %}
+<a class="btn btn-primary px-3" href="{{ url_for('create_event_form') }}">Create an Event</a>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-7 text-center py-4">
+    <div class="mb-4">
+      <span class="brand-glow d-inline-block mb-3" style="width:3rem;height:3rem;border-radius:50%;"></span>
+    </div>
+    <h1 class="display-5 fw-bold mb-3">DishList</h1>
+    <p class="lead text-secondary mb-5">
+      The potluck organizer that keeps everyone in the loop.
+      Track dishes, flag allergens, and make sure every guest has something delicious to eat.
+    </p>
+    <a href="{{ url_for('create_event_form') }}" class="btn btn-primary btn-lg px-5 mb-4">
+      Create an Event
+    </a>
+    <div class="text-muted small">
+      <p class="mb-0">
+        Already have a link from your host? Use it directly to see what's on the table and add your dish.
+      </p>
+    </div>
+  </div>
+</div>
+{% endblock %}

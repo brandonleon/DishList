@@ -3,10 +3,10 @@
     "Main Dish",
     "Side Dish",
     "Dessert",
-    "Beverage",
-    "Snackages"
+    "Beverage"
   ],
   "admin_networks": [
     "127.0.0.1/32"
-  ]
+  ],
+  "web_admin_enabled": true
 }

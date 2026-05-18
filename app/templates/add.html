@@ -1,48 +1,243 @@
 {% extends "base.html" %}
 
+{% block nav_actions %}
+<a class="btn btn-outline-secondary px-3" href="{{ url_for('event_home', slug=event.slug) }}">Back to board</a>
+{% endblock %}
+
 {% block content %}
 <div class="row justify-content-center">
-  <div class="col-lg-8">
+  <div class="col-lg-7">
     <div class="card shadow-sm">
-      <div class="card-body p-4">
-        <p class="text-uppercase small text-muted mb-1">Share your dish</p>
-        <h1 class="h3 mb-4">Tell everyone what you're bringing</h1>
-        <form method="post" action="{{ url_for('add_submission') }}">
+      <div class="card-body p-4 p-lg-5">
+        <p class="text-uppercase small text-muted mb-1">{{ event.name }}</p>
+        <h1 class="h3 mb-1">Tell everyone what you're bringing</h1>
+        <p class="text-secondary mb-4">It only takes a few seconds.</p>
+
+        <form method="post" action="{{ url_for('event_add_submission', slug=event.slug) }}">
+
+          <!-- Your name -->
           <div class="mb-3">
-            <label for="contributor" class="form-label">Your name</label>
-            <input type="text" class="form-control" id="contributor" name="contributor" placeholder="Alex Chef" required />
+            <label for="contributor" class="form-label fw-semibold">
+              Your name <span class="text-danger">*</span>
+            </label>
+            <input
+              type="text" class="form-control form-control-lg"
+              id="contributor" name="contributor"
+              placeholder="Alex Chef"
+              required maxlength="80"
+              autocomplete="name" autofocus
+            />
           </div>
+
+          <!-- Dish name + Category -->
+          <div class="row g-3 mb-3">
+            <div class="col-md-8">
+              <label for="dish_name" class="form-label fw-semibold">
+                Dish name <span class="text-danger">*</span>
+              </label>
+              <input
+                type="text" class="form-control"
+                id="dish_name" name="dish_name"
+                placeholder="Lemon Herb Pasta"
+                required maxlength="120"
+              />
+            </div>
+            <div class="col-md-4">
+              <label for="dish_type" class="form-label fw-semibold">
+                Category <span class="text-danger">*</span>
+              </label>
+              <select class="form-select" id="dish_type" name="dish_type" required>
+                {% for dish_type in dish_types %}
+                  <option value="{{ dish_type }}">{{ dish_type }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+
+          <!-- Notes — drives tag auto-suggest below -->
           <div class="mb-3">
-            <label for="dish_name" class="form-label">Dish name</label>
-            <input type="text" class="form-control" id="dish_name" name="dish_name" placeholder="Lemon Herb Pasta" required />
+            <label for="notes" class="form-label fw-semibold">Notes</label>
+            <textarea
+              class="form-control" id="notes" name="notes" rows="2"
+              placeholder="e.g., serves 8, needs reheating, made with tree nuts"
+            ></textarea>
+            <div class="form-text">
+              Serving size, prep details, allergens — tags are auto-suggested as you type the dish name or notes.
+            </div>
           </div>
-          <div class="mb-3">
-            <label for="dish_type" class="form-label">Dish type</label>
-            <select class="form-select" id="dish_type" name="dish_type" required>
-              {% for dish_type in dish_types %}
-                <option value="{{ dish_type }}">{{ dish_type }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          <div class="mb-3">
-            <label for="allergens" class="form-label">Dish Allergens</label>
-            <textarea class="form-control" id="allergens" name="allergens" rows="2" placeholder="e.g., contains peanuts, contains dairy"></textarea>
-            <div class="form-text">Separate allergens with commas so guests can scan quickly.</div>
-          </div>
-          {% with picker_id="add-dietary-tags", selected_tag_ids=[], helper_text="Search or scroll to add curated dietary notes. Only hosts can manage this list." %}
+
+          <!-- Tag picker -->
+          {% with picker_id="add-dietary-tags", selected_tag_ids=[], helper_text="Auto-suggested from your dish name and notes — adjust freely.", hidden_tag_count=hidden_tag_count %}
             {% include "partials/tag_picker.html" %}
           {% endwith %}
-          <div class="mb-4">
-            <label for="notes" class="form-label">Extra notes</label>
-            <textarea class="form-control" id="notes" name="notes" rows="3" placeholder="Goes great with crunchy bread"></textarea>
+
+          <div class="d-flex justify-content-between align-items-center mt-4">
+            <a class="btn btn-outline-secondary" href="{{ url_for('event_home', slug=event.slug) }}">Cancel</a>
+            <button type="submit" class="btn btn-primary btn-lg px-4">Add to the potluck</button>
           </div>
-          <div class="d-flex justify-content-between align-items-center">
-            <a class="btn btn-outline-secondary" href="{{ url_for('home') }}">Back to list</a>
-            <button type="submit" class="btn btn-primary btn-lg">Add to the potluck</button>
-          </div>
+
         </form>
       </div>
     </div>
   </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<style>
+  @keyframes tagAutoFlash {
+    0%   { outline: 3px solid rgba(var(--bs-primary-rgb), 0.55); outline-offset: 1px; }
+    100% { outline: 3px solid transparent; outline-offset: 5px; }
+  }
+  .tag-auto-flash { animation: tagAutoFlash 0.65s ease-out forwards; }
+</style>
+<script>
+// Tag keywords from server: { "<tagId>": ["keyword1", "keyword2", ...] }
+const TAG_KEYWORDS = {{ tag_keywords_json | safe }};
+</script>
+<script>
+(function () {
+  'use strict';
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+
+  function escRe(s) {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  /**
+   * Returns true if `text` contains `keyword` (word-boundary match, case-insensitive)
+   * AND the match is not cancelled by a negation phrase:
+   *   "X free", "X-free", "free of X", "free from X"
+   */
+  function termMatches(text, keyword) {
+    const re = new RegExp('\\b' + escRe(keyword), 'i');
+    if (!re.test(text)) return false;
+    // Negation check using the keyword itself as the stem
+    const se = escRe(keyword);
+    if (new RegExp('\\b' + se + 's?[-\\s]+free\\b', 'i').test(text)) return false;
+    if (new RegExp('\\bfree[-\\s]+(?:of|from)[-\\s]+' + se, 'i').test(text)) return false;
+    return true;
+  }
+
+  // ── Build keyword → [checkbox] map ────────────────────────────────────────
+
+  function buildKeywordMap() {
+    const map = {}; // keyword (lowercase) → Set of checkbox elements
+    for (const [tagId, keywords] of Object.entries(TAG_KEYWORDS)) {
+      const cb = document.getElementById('add-dietary-tags-' + tagId);
+      if (!cb) continue;
+      for (const kw of keywords) {
+        const key = kw.toLowerCase().trim();
+        if (!map[key]) map[key] = new Set();
+        map[key].add(cb);
+      }
+    }
+    return map;
+  }
+
+  // ── DOM helpers ────────────────────────────────────────────────────────────
+
+  /** Brief outline flash on the tag label to signal auto-selection. */
+  function flashTag(cb) {
+    const lbl = document.querySelector('label[for="' + cb.id + '"]');
+    if (!lbl) return;
+    lbl.classList.remove('tag-auto-flash');
+    void lbl.offsetWidth; // force reflow to restart animation
+    lbl.classList.add('tag-auto-flash');
+    lbl.addEventListener('animationend', () => lbl.classList.remove('tag-auto-flash'), { once: true });
+  }
+
+  /** Sync the "X selected" counter in the tag picker header. */
+  function updatePickerCount() {
+    const counter = document.querySelector('#add-dietary-tags [data-tag-selected-count]');
+    if (!counter) return;
+    const n = document.querySelectorAll('#add-dietary-tags input[type="checkbox"]:checked').length;
+    counter.textContent = n + ' selected';
+  }
+
+  // ── Hidden tag surfacing ───────────────────────────────────────────────────
+
+  function surfaceTag(cb) {
+    const opt = cb.closest('[data-tag-option]');
+    if (opt && opt.dataset.tagHidden === 'true' && opt.dataset.tagSurfaced !== 'true') {
+      opt.dataset.tagSurfaced = 'true';
+      const picker = cb.closest('[data-tag-picker]');
+      if (picker && picker._refreshTags) picker._refreshTags();
+    }
+  }
+
+  function unsurfaceTag(cb) {
+    const opt = cb.closest('[data-tag-option]');
+    if (opt && opt.dataset.tagHidden === 'true' && opt.dataset.tagSurfaced === 'true') {
+      delete opt.dataset.tagSurfaced;
+      const picker = cb.closest('[data-tag-picker]');
+      if (picker && picker._refreshTags) picker._refreshTags();
+    }
+  }
+
+  // ── Core sync ──────────────────────────────────────────────────────────────
+
+  const dishNameEl = document.getElementById('dish_name');
+  const notesEl    = document.getElementById('notes');
+  if (!dishNameEl && !notesEl) return;
+
+  const keywordMap = buildKeywordMap();
+  if (!Object.keys(keywordMap).length) return;
+
+  /**
+   * Checkbox IDs we auto-checked — so we only auto-uncheck our own selections
+   * and never override something the user manually ticked.
+   */
+  const autoSelected = new Set();
+
+  function syncTags() {
+    // Combine dish name + notes for the richest possible signal
+    const text = [
+      dishNameEl ? dishNameEl.value : '',
+      notesEl    ? notesEl.value    : ''
+    ].join(' ');
+
+    // For each checkbox, determine if at least one keyword matches
+    const cbShouldSelect = new Map(); // checkbox element → boolean
+
+    for (const [keyword, checkboxes] of Object.entries(keywordMap)) {
+      const matched = termMatches(text, keyword);
+      for (const cb of checkboxes) {
+        if (!cbShouldSelect.has(cb)) cbShouldSelect.set(cb, false);
+        if (matched) cbShouldSelect.set(cb, true);
+      }
+    }
+
+    let changed = false;
+    for (const [cb, shouldSelect] of cbShouldSelect) {
+      if (shouldSelect && !cb.checked) {
+        surfaceTag(cb);          // make hidden tags visible before checking
+        cb.checked = true;
+        autoSelected.add(cb.id);
+        flashTag(cb);
+        changed = true;
+      } else if (!shouldSelect && cb.checked && autoSelected.has(cb.id)) {
+        // Only undo auto-selections — leave manual choices untouched
+        cb.checked = false;
+        autoSelected.delete(cb.id);
+        unsurfaceTag(cb);        // re-hide if it was only auto-surfaced
+        changed = true;
+      }
+    }
+
+    if (changed) updatePickerCount();
+  }
+
+  // Debounce — don't run on every single keystroke
+  let timer;
+  function onInput() {
+    clearTimeout(timer);
+    timer = setTimeout(syncTags, 200);
+  }
+  if (dishNameEl) dishNameEl.addEventListener('input', onInput);
+  if (notesEl)    notesEl.addEventListener('input', onInput);
+
+})();
+</script>
 {% endblock %}

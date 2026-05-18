@@ -4,38 +4,13 @@
       <td class="fw-semibold">{{ dish.dish_name }}</td>
       <td>{{ dish.dish_type }}</td>
       <td>{{ dish.contributor }}</td>
-      <td>
-        {% if dish.allergens %}
-          {{ dish.allergens | join(', ') }}
-        {% else %}
-          <span class="text-muted">None</span>
-        {% endif %}
-      </td>
-      <td>
-        {% set tags = dish.tags or [] %}
-        {% if tags %}
-          <div class="d-flex flex-wrap gap-1">
-            {% for tag in tags %}
-              <span class="badge tag-pill {{ tag.category | tag_category_class }}">{{ tag.name }}</span>
-            {% endfor %}
-          </div>
-        {% elif dish.dietary_flags %}
-          <div class="d-flex flex-wrap gap-1">
-            {% for flag in dish.dietary_flags %}
-              <span class="badge rounded-pill {{ flag | dietary_badge_class }}">{{ flag }}</span>
-            {% endfor %}
-          </div>
-        {% else %}
-          <span class="text-muted">None</span>
-        {% endif %}
-      </td>
       <td>{{ dish.notes or '—' }}</td>
-      <td class="text-nowrap">{{ dish.created_at | format_dish_timestamp }}</td>
+      <td class="text-nowrap text-muted small">{{ dish.created_at | format_dish_timestamp }}</td>
     </tr>
   {% endfor %}
 {% else %}
   <tr>
-    <td colspan="7" class="text-center py-4 text-muted">
+    <td colspan="5" class="text-center py-4 text-muted">
       No dishes match this search just yet.
     </td>
   </tr>

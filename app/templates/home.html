@@ -1,41 +1,100 @@
 {% extends "base.html" %}
 
+{% block nav_actions %}
+{% if event.is_active %}
+<a class="btn btn-primary px-3" href="{{ url_for('event_add_form', slug=event.slug) }}">Add a Dish</a>
+{% endif %}
+{% endblock %}
+
 {% block content %}
+
+<!-- ── Event header ──────────────────────────────────────────── -->
 <section class="mb-5">
+  <p class="text-uppercase text-muted small mb-1">Community Potluck</p>
   <div class="d-flex flex-column flex-md-row justify-content-between align-items-start gap-3">
     <div>
-      <p class="text-uppercase text-muted small mb-1">Community Potluck</p>
-      <h1 class="fw-bold">Who's bringing what?</h1>
-      <p class="text-secondary">
-        Track dishes, highlight allergens, and make sure every guest has something delicious.
-      </p>
+      <h1 class="fw-bold mb-1">{{ event.name }}</h1>
+      {% if event.event_date %}
+        <p class="text-muted mb-1">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="bi bi-calendar3 me-1 mb-1" viewBox="0 0 16 16">
+            <path d="M14 0H2a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V2a2 2 0 0 0-2-2zM1 3.857C1 3.384 1.448 3 2 3h12c.552 0 1 .384 1 .857v10.286c0 .473-.448.857-1 .857H2c-.552 0-1-.384-1-.857V3.857z"/>
+            <path d="M6.5 7a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm3 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm3 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm-9 3a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm3 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm3 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm3 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm-9 3a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm3 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm3 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2z"/>
+          </svg>
+          {{ event.event_date }}
+        </p>
+      {% endif %}
+      {% if event.description %}
+        <p class="text-secondary mb-0">{{ event.description }}</p>
+      {% else %}
+        <p class="text-secondary mb-0">Track dishes, highlight allergens, and make sure everyone has something delicious.</p>
+      {% endif %}
     </div>
-    <div class="d-flex flex-column align-items-stretch gap-2">
-      <a class="btn btn-lg btn-primary" href="{{ url_for('add_form') }}">Share Your Dish</a>
+    <div class="d-flex flex-column align-items-stretch gap-2 flex-shrink-0">
+      {% if event.is_active %}
+        <a class="btn btn-lg btn-primary" href="{{ url_for('event_add_form', slug=event.slug) }}">Share Your Dish</a>
+      {% else %}
+        <span class="badge bg-secondary-subtle text-secondary px-3 py-2">Submissions closed</span>
+      {% endif %}
       <div class="btn-group" role="group" aria-label="View toggle">
         <a
           class="btn btn-outline-secondary {% if view_mode == 'cards' %}active{% endif %}"
-          href="{{ url_for('home') }}?view=cards{% if search_query %}&search={{ search_query | urlencode }}{% endif %}"
-        >
-          Card view
-        </a>
+          href="{{ url_for('event_home', slug=event.slug) }}?view=cards{% if search_query %}&search={{ search_query | urlencode }}{% endif %}"
+        >Cards</a>
         <a
           class="btn btn-outline-secondary {% if view_mode == 'table' %}active{% endif %}"
-          href="{{ url_for('home') }}?view=table{% if search_query %}&search={{ search_query | urlencode }}{% endif %}"
-        >
-          Table view
-        </a>
+          href="{{ url_for('event_home', slug=event.slug) }}?view=table{% if search_query %}&search={{ search_query | urlencode }}{% endif %}"
+        >Table</a>
       </div>
     </div>
   </div>
 </section>
 
-{% if dishes %}
-  <form method="get" action="{{ url_for('home') }}" class="mb-4">
+<!-- ── Host contributions (pinned) ──────────────────────────── -->
+{% if host_dishes %}
+<section class="mb-5">
+  <div class="d-flex align-items-center gap-2 mb-3">
+    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" class="bi bi-house-heart-fill text-primary" viewBox="0 0 16 16">
+      <path d="M7.293 1.5a1 1 0 0 1 1.414 0L11 3.793V2.5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 .5.5v3.293l2.354 2.353a.5.5 0 0 1-.708.708L8 2.207 1.354 8.854a.5.5 0 1 1-.708-.708z"/>
+      <path d="m14 9.293-6-6-6 6V13.5A1.5 1.5 0 0 0 3.5 15h9a1.5 1.5 0 0 0 1.5-1.5zm-6-.811c1.664-1.673 5.825 1.254 0 5.018-5.825-3.764-1.664-6.691 0-5.018"/>
+    </svg>
+    <h2 class="h5 mb-0 fw-semibold">{{ event.host_name }} is contributing</h2>
+  </div>
+  <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-3">
+    {% for dish in host_dishes %}
+      <div class="col">
+        <div class="card h-100 shadow-sm border-primary-subtle">
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
+              <div>
+                <p class="text-uppercase small text-muted mb-1">{{ dish.dish_type }}</p>
+                <h3 class="h6 fw-bold mb-0">{{ dish.dish_name }}</h3>
+              </div>
+              <span class="badge bg-primary-subtle text-primary text-nowrap flex-shrink-0">
+                <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" fill="currentColor" class="bi bi-house-fill me-1" viewBox="0 0 16 16">
+                  <path d="M8.707 1.5a1 1 0 0 0-1.414 0L.646 8.146a.5.5 0 0 0 .708.708L8 2.207l6.646 6.647a.5.5 0 0 0 .708-.708L13 5.793V2.5a.5.5 0 0 0-.5-.5h-1a.5.5 0 0 0-.5.5v1.293z"/>
+                  <path d="m8 3.293 6 6V13.5a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 13.5V9.293z"/>
+                </svg>
+                {{ event.host_name }}
+              </span>
+            </div>
+            {% if dish.notes %}
+              <p class="small text-secondary mb-2">{{ dish.notes }}</p>
+            {% endif %}
+
+
+          </div>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<!-- ── Guest submissions ──────────────────────────────────────── -->
+{% if guest_dishes %}
+  <form method="get" action="{{ url_for('event_home', slug=event.slug) }}" class="mb-4">
     <input type="hidden" name="view" value="{{ view_mode }}" />
-    <label class="form-label fw-semibold" for="dish-search">
-      Search the {{ 'table' if view_mode == 'table' else 'cards' }}
-    </label>
+    <label class="form-label fw-semibold" for="dish-search">Search the {{ 'table' if view_mode == 'table' else 'cards' }}</label>
     <div class="position-relative">
       <input
         type="search"
@@ -45,15 +104,12 @@
         placeholder="Start typing to filter dishes..."
         value="{{ search_query }}"
         autocomplete="off"
-        hx-get="{% if view_mode == 'table' %}{{ url_for('table_rows_partial') }}{% else %}{{ url_for('card_grid_partial') }}{% endif %}"
+        hx-get="{{ url_for('event_table_rows_partial', slug=event.slug) if view_mode == 'table' else url_for('event_card_grid_partial', slug=event.slug) }}"
         hx-trigger="keyup changed delay:500ms, search"
-        hx-target="{% if view_mode == 'table' %}#dish-table-body{% else %}#dish-card-grid{% endif %}"
+        hx-target="{{ '#dish-table-body' if view_mode == 'table' else '#dish-card-grid' }}"
         hx-indicator="#dish-search-indicator"
       />
-      <div
-        id="dish-search-indicator"
-        class="position-absolute top-50 end-0 translate-middle-y pe-3 htmx-indicator"
-      >
+      <div id="dish-search-indicator" class="position-absolute top-50 end-0 translate-middle-y pe-3 htmx-indicator">
         <div class="spinner-border spinner-border-sm text-secondary" role="status">
           <span class="visually-hidden">Searching...</span>
         </div>
@@ -61,6 +117,7 @@
     </div>
     <div class="form-text">Matches dish names, contributors, types, notes, and dietary info.</div>
   </form>
+
   {% if view_mode == 'table' %}
     <div class="table-responsive bg-white rounded-4 shadow-sm">
       <table class="table align-middle mb-0">
@@ -69,8 +126,6 @@
             <th>Dish</th>
             <th>Type</th>
             <th>Contributor</th>
-            <th>Allergens</th>
-            <th>Dietary</th>
             <th>Notes</th>
             <th>Added</th>
           </tr>
@@ -85,14 +140,25 @@
       {% include "partials/card_grid.html" %}
     </div>
   {% endif %}
-{% else %}
+
+{% elif not host_dishes %}
   <div class="splash-card text-center p-5 bg-white rounded-4 shadow-sm">
     <p class="text-uppercase small text-muted">The table is bare</p>
     <h2 class="fw-bold">This potluck is a blank canvas</h2>
-    <p class="text-secondary mb-4">
-      No dishes have landed yet—plant the first culinary flag and inspire everyone else.
-    </p>
-    <a class="btn btn-lg btn-success" href="{{ url_for('add_form') }}">Add the very first dish</a>
+    <p class="text-secondary mb-4">No dishes have landed yet—plant the first culinary flag and inspire everyone else.</p>
+    {% if event.is_active %}
+      <a class="btn btn-lg btn-success" href="{{ url_for('event_add_form', slug=event.slug) }}">Add the very first dish</a>
+    {% endif %}
+  </div>
+
+{% else %}
+  <!-- host_dishes exist but no guest_dishes yet -->
+  <div class="text-center py-4 text-muted">
+    <p class="mb-0">No guest dishes yet — be the first to add yours!</p>
+    {% if event.is_active %}
+      <a class="btn btn-primary mt-3" href="{{ url_for('event_add_form', slug=event.slug) }}">Add your dish</a>
+    {% endif %}
   </div>
 {% endif %}
+
 {% endblock %}

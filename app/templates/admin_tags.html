@@ -1,0 +1,327 @@
+{% extends "base.html" %}
+
+{% block nav_actions %}
+<a class="btn btn-outline-secondary px-3" href="{{ url_for('admin_page') }}">&larr; Admin</a>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-10">
+
+    <!-- Page header -->
+    <div class="d-flex justify-content-between align-items-start mb-4">
+      <div>
+        <h1 class="h4 fw-semibold mb-1">Tag library</h1>
+        <p class="text-muted small mb-0">
+          {{ tag_counts.total }} tag{{ 's' if tag_counts.total != 1 else '' }}
+          &mdash;
+          <span class="text-success fw-semibold">{{ tag_counts.visible }} visible</span>
+          &bull;
+          <span class="text-secondary">{{ tag_counts.hidden }} hidden</span>
+        </p>
+      </div>
+      <form method="post" action="{{ url_for('reset_tags_action') }}"
+            onsubmit="return confirm('Reset to defaults? This removes ALL current tags and their associations from every dish. This cannot be undone.')">
+        <button type="submit" class="btn btn-sm btn-outline-danger">Reset to defaults</button>
+      </form>
+    </div>
+
+    {% if tag_success %}
+      <div class="alert alert-success alert-dismissible" role="alert">
+        {{ tag_success }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+      </div>
+    {% endif %}
+    {% if tag_error %}
+      <div class="alert alert-danger alert-dismissible" role="alert">
+        {{ tag_error }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+      </div>
+    {% endif %}
+
+    <!-- ── Add tag ────────────────────────────────────────────────── -->
+    <div class="card shadow-sm mb-4">
+      <div class="card-body p-4">
+        <h2 class="h6 fw-semibold mb-3">Add a tag</h2>
+        <form method="post" action="{{ url_for('add_tag_action') }}">
+          <div class="row g-2 mb-2 align-items-end">
+            <div class="col-md-4">
+              <label for="tag_name" class="form-label">Tag label</label>
+              <input type="text" class="form-control" id="tag_name" name="tag_name"
+                     placeholder="e.g., Peanut-free" required />
+            </div>
+            <div class="col-md-4">
+              <label for="tag_category" class="form-label">Category</label>
+              <input type="text" class="form-control" id="tag_category" name="tag_category"
+                     list="tag-category-list" placeholder="Pick or type a category" required />
+              <datalist id="tag-category-list">
+                {% for category in tag_categories %}
+                  <option value="{{ category }}">{{ category }}</option>
+                {% endfor %}
+              </datalist>
+            </div>
+            <div class="col-md-2 d-flex align-items-end pb-1">
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="tag_is_hidden"
+                       id="tag_is_hidden_add" />
+                <label class="form-check-label small" for="tag_is_hidden_add">
+                  Hidden by default
+                </label>
+              </div>
+            </div>
+            <div class="col-md-2 d-grid">
+              <button type="submit" class="btn btn-primary">Add tag</button>
+            </div>
+          </div>
+          <div class="row g-2">
+            <div class="col-12">
+              <label for="tag_keywords_add" class="form-label">
+                Auto-detect keywords
+                <span class="text-muted fw-normal small">(optional)</span>
+              </label>
+              <input type="text" class="form-control form-control-sm" id="tag_keywords_add"
+                     name="tag_keywords"
+                     placeholder="e.g., peanut, groundnut, pb" />
+              <div class="form-text">
+                Comma-separated. Typed in the dish name or notes field → this tag is auto-suggested.
+                Hidden tags are surfaced and auto-checked when keywords match.
+              </div>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ── Filter bar ────────────────────────────────────────────── -->
+    <div class="d-flex flex-wrap gap-2 mb-3 align-items-center">
+      <input type="search" class="form-control form-control-sm"
+             id="tag-page-search" placeholder="Search tags by name or keyword&hellip;"
+             style="max-width:300px" autocomplete="off" />
+      <div class="btn-group btn-group-sm" role="group" aria-label="Filter tags by visibility">
+        <button type="button" class="btn btn-outline-secondary active" data-vis-filter="all">All</button>
+        <button type="button" class="btn btn-outline-secondary" data-vis-filter="visible">Visible</button>
+        <button type="button" class="btn btn-outline-secondary" data-vis-filter="hidden">Hidden</button>
+      </div>
+    </div>
+
+    <!-- ── Tag groups ─────────────────────────────────────────────── -->
+    {% if tag_groups %}
+      {% for category, tags in tag_groups %}
+        {% set visible_n = tags | rejectattr('is_hidden') | list | length %}
+        {% set hidden_n  = tags | selectattr('is_hidden') | list | length %}
+        <div class="card shadow-sm mb-3" data-tag-category-card>
+          <div class="card-body p-3">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <h3 class="h6 mb-0 fw-semibold">{{ category }}</h3>
+              <span class="text-muted small">
+                {{ visible_n }} visible
+                {% if hidden_n %}&bull; {{ hidden_n }} hidden{% endif %}
+              </span>
+            </div>
+            <div class="d-flex flex-column gap-1">
+              {% for tag in tags %}
+                <div id="tag-item-{{ tag.id }}"
+                     data-tag-row
+                     data-is-hidden="{{ 'true' if tag.is_hidden else 'false' }}"
+                     data-tag-name-lower="{{ tag.name | lower }}"
+                     class="tag-row {% if tag.is_hidden %}tag-row-hidden{% endif %}">
+
+                  <!-- View row -->
+                  <div class="tag-view d-flex align-items-center gap-2 py-1 px-1 rounded">
+
+                    <!-- Visibility toggle button -->
+                    <form method="post"
+                          action="{{ url_for('toggle_tag_visibility_action', tag_id=tag.id) }}"
+                          class="d-inline flex-shrink-0">
+                      <button type="submit"
+                              class="btn btn-link p-0 lh-1 border-0"
+                              style="font-size:1.1rem; color:{{ '#179299' if not tag.is_hidden else '#acb0be' }}"
+                              title="{{ 'Hide this tag (currently visible)' if not tag.is_hidden else 'Show this tag (currently hidden)' }}">
+                        {{ '●' if not tag.is_hidden else '○' }}
+                      </button>
+                    </form>
+
+                    <!-- Tag name pill -->
+                    <span class="tag-pill {{ tag.category | tag_category_class }} {% if tag.is_hidden %}opacity-60{% endif %} flex-shrink-0">
+                      {{ tag.name }}
+                    </span>
+
+                    {% if tag.is_hidden %}
+                      <span class="badge bg-secondary-subtle text-secondary flex-shrink-0"
+                            style="font-size:.65rem">hidden</span>
+                    {% endif %}
+
+                    <!-- Keywords preview -->
+                    <span class="text-muted small flex-grow-1 font-monospace text-truncate"
+                          style="min-width:0"
+                          title="{{ tag.keywords | join(', ') if tag.keywords else 'No keywords' }}">
+                      {% if tag.keywords %}
+                        {{ tag.keywords[:6] | join(', ') }}{% if tag.keywords | length > 6 %}&hellip; +{{ tag.keywords | length - 6 }}{% endif %}
+                      {% else %}
+                        <span class="fst-italic opacity-50">no keywords</span>
+                      {% endif %}
+                    </span>
+
+                    <!-- Actions -->
+                    <div class="d-flex gap-1 ms-auto flex-shrink-0">
+                      <button type="button"
+                              class="btn btn-sm btn-outline-secondary py-0 px-2"
+                              onclick="startEditTag({{ tag.id }})"
+                              title="Edit tag">&#9998; Edit</button>
+                      <form method="post"
+                            action="{{ url_for('delete_tag_action', tag_id=tag.id) }}"
+                            onsubmit="return confirm('Remove &quot;{{ tag.name }}&quot; from every dish?');"
+                            class="d-inline">
+                        <button type="submit"
+                                class="btn btn-sm btn-outline-danger py-0 px-2"
+                                title="Delete tag">&times;</button>
+                      </form>
+                    </div>
+                  </div><!-- .tag-view -->
+
+                  <!-- Edit form (hidden until startEditTag fires) -->
+                  <form id="tag-edit-{{ tag.id }}"
+                        method="post"
+                        action="{{ url_for('update_tag_action', tag_id=tag.id) }}"
+                        class="d-none border rounded-2 p-3 mt-1 mb-1"
+                        style="background:var(--bs-body-bg)">
+                    <div class="row g-2 mb-2 align-items-end">
+                      <div class="col-sm-4">
+                        <label class="form-label small mb-1">Name</label>
+                        <input type="text" name="name" value="{{ tag.name }}"
+                               class="form-control form-control-sm" required />
+                      </div>
+                      <div class="col-sm-4">
+                        <label class="form-label small mb-1">Category</label>
+                        <input type="text" name="category" value="{{ tag.category }}"
+                               list="tag-category-list"
+                               class="form-control form-control-sm" required />
+                      </div>
+                      <div class="col-sm-2 d-flex align-items-end pb-1">
+                        <div class="form-check">
+                          <input class="form-check-input" type="checkbox" name="is_hidden"
+                                 id="edit-hidden-{{ tag.id }}"
+                                 {{ 'checked' if tag.is_hidden else '' }} />
+                          <label class="form-check-label small" for="edit-hidden-{{ tag.id }}">
+                            Hidden
+                          </label>
+                        </div>
+                      </div>
+                      <div class="col-sm-2 d-flex gap-1 align-items-end">
+                        <button type="submit" class="btn btn-sm btn-primary">Save</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary"
+                                onclick="cancelEditTag({{ tag.id }})">Cancel</button>
+                      </div>
+                    </div>
+                    <div>
+                      <label class="form-label small mb-1">Auto-detect keywords</label>
+                      <input type="text" name="keywords"
+                             value="{{ tag.keywords | join(', ') }}"
+                             class="form-control form-control-sm"
+                             placeholder="keyword1, keyword2, &hellip;" />
+                      <div class="form-text">
+                        Comma-separated &bull; typed in dish name or notes &rarr; auto-suggests this tag
+                        {% if tag.is_hidden %}&bull; hidden tags are also <em>surfaced</em> when keywords match{% endif %}
+                      </div>
+                    </div>
+                  </form><!-- tag-edit -->
+
+                </div><!-- tag-item -->
+              {% endfor %}
+            </div><!-- flex-column -->
+          </div><!-- card-body -->
+        </div><!-- card -->
+      {% endfor %}
+    {% else %}
+      <div class="card shadow-sm">
+        <div class="card-body p-4 text-muted text-center">
+          No tags configured yet. Add one above.
+        </div>
+      </div>
+    {% endif %}
+
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<style>
+  .tag-row-hidden .tag-view {
+    background: repeating-linear-gradient(
+      135deg,
+      transparent,
+      transparent 4px,
+      rgba(76,79,105,.04) 4px,
+      rgba(76,79,105,.04) 8px
+    );
+  }
+  .opacity-60 { opacity: 0.6; }
+</style>
+<script>
+(function () {
+  // ── Inline edit toggle ─────────────────────────────────────────
+  window.startEditTag = function (id) {
+    const item = document.getElementById('tag-item-' + id);
+    item.querySelector('.tag-view').classList.add('d-none');
+    item.style.width = '100%';
+    const form = document.getElementById('tag-edit-' + id);
+    form.classList.remove('d-none');
+    form.querySelector('input[name="name"]').focus();
+  };
+
+  window.cancelEditTag = function (id) {
+    const item = document.getElementById('tag-item-' + id);
+    item.querySelector('.tag-view').classList.remove('d-none');
+    item.style.width = '';
+    document.getElementById('tag-edit-' + id).classList.add('d-none');
+  };
+
+  // ── Search & visibility filter ────────────────────────────────
+  const searchInput  = document.getElementById('tag-page-search');
+  const filterBtns   = document.querySelectorAll('[data-vis-filter]');
+  const categoryCards = document.querySelectorAll('[data-tag-category-card]');
+
+  let activeFilter = 'all';
+
+  function applyFilters() {
+    const query = searchInput ? searchInput.value.trim().toLowerCase() : '';
+
+    categoryCards.forEach(card => {
+      let cardHasVisible = false;
+
+      card.querySelectorAll('[data-tag-row]').forEach(row => {
+        const name     = row.dataset.tagNameLower || '';
+        const isHidden = row.dataset.isHidden === 'true';
+
+        const nameMatch = !query || name.includes(query);
+        const visMatch  = activeFilter === 'all'
+          || (activeFilter === 'visible' && !isHidden)
+          || (activeFilter === 'hidden'  && isHidden);
+
+        const show = nameMatch && visMatch;
+        row.style.display = show ? '' : 'none';
+        if (show) cardHasVisible = true;
+      });
+
+      // Hide the whole category card if nothing matches
+      card.style.display = cardHasVisible ? '' : 'none';
+    });
+  }
+
+  if (searchInput) {
+    searchInput.addEventListener('input', applyFilters);
+  }
+
+  filterBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      filterBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      activeFilter = btn.dataset.visFilter;
+      applyFilters();
+    });
+  });
+
+  applyFilters();
+})();
+</script>
+{% endblock %}

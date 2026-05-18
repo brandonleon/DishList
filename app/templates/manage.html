@@ -1,0 +1,259 @@
+{% extends "base.html" %}
+
+{% block nav_actions %}
+<a class="btn btn-outline-primary px-3" href="{{ url_for('event_home', slug=event.slug) }}" target="_blank">View Event</a>
+{% endblock %}
+
+{% block content %}
+
+<div class="alert alert-warning d-flex align-items-start gap-2" role="alert">
+  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" class="bi bi-key-fill flex-shrink-0 mt-1" viewBox="0 0 16 16">
+    <path d="M3.5 11.5a3.5 3.5 0 1 1 3.163-5H14L15.5 8 14 9.5l-1-1-1 1-1-1-1 1-1-1-1.837 1.837A3.5 3.5 0 0 1 3.5 11.5zm0-3a.5.5 0 1 0 0-1 .5.5 0 0 0 0 1z"/>
+  </svg>
+  <div>
+    <strong>Management page — keep this URL private.</strong>
+    Bookmark it; you'll need it to manage your event later.
+  </div>
+</div>
+
+<!-- ── Event links ───────────────────────────────────────────── -->
+<div class="card shadow-sm mb-4">
+  <div class="card-body p-4">
+    <h1 class="h5 mb-3 fw-semibold">{{ event.name }}</h1>
+    <div class="row g-3">
+      <div class="col-md-6">
+        <label class="form-label small text-muted text-uppercase">Guest link — share this</label>
+        <div class="input-group">
+          <input
+            type="text" class="form-control font-monospace small"
+            id="guest-link" readonly
+            value="{{ request.base_url }}e/{{ event.slug }}"
+          />
+          <button class="btn btn-outline-secondary" type="button" onclick="copyLink('guest-link', this)" title="Copy">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="bi bi-clipboard" viewBox="0 0 16 16">
+              <path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1z"/>
+              <path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5zm-3-1A1.5 1.5 0 0 0 5 1.5v1A1.5 1.5 0 0 0 6.5 4h3A1.5 1.5 0 0 0 11 2.5v-1A1.5 1.5 0 0 0 9.5 0z"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label small text-muted text-uppercase">Management link — keep private</label>
+        <div class="input-group">
+          <input
+            type="text" class="form-control font-monospace small"
+            id="manage-link" readonly
+            value="{{ request.url }}"
+          />
+          <button class="btn btn-outline-secondary" type="button" onclick="copyLink('manage-link', this)" title="Copy">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="bi bi-clipboard" viewBox="0 0 16 16">
+              <path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1z"/>
+              <path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5zm-3-1A1.5 1.5 0 0 0 5 1.5v1A1.5 1.5 0 0 0 6.5 4h3A1.5 1.5 0 0 0 11 2.5v-1A1.5 1.5 0 0 0 9.5 0z"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Event settings ────────────────────────────────────────── -->
+<div class="card shadow-sm mb-4">
+  <div class="card-body p-4">
+    <h2 class="h5 mb-3 fw-semibold">Event settings</h2>
+    <form method="post" action="{{ url_for('update_event_settings', token=event.management_token) }}">
+      <div class="row g-3 mb-3">
+        <div class="col-md-8">
+          <label for="name" class="form-label">Event name <span class="text-danger">*</span></label>
+          <input type="text" class="form-control" id="name" name="name" value="{{ event.name }}" required maxlength="120" />
+        </div>
+        <div class="col-md-4">
+          <label for="event_date" class="form-label">Date</label>
+          <input type="date" class="form-control" id="event_date" name="event_date"
+                 value="{{ event.event_date or '' }}" />
+        </div>
+      </div>
+      <div class="row g-3 mb-3">
+        <div class="col-md-6">
+          <label for="host_name" class="form-label">Host / household name</label>
+          <input type="text" class="form-control" id="host_name" name="host_name"
+                 value="{{ event.host_name }}" maxlength="80" />
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Accepting submissions</label>
+          <div class="form-check mt-2">
+            <input class="form-check-input" type="checkbox" id="is_active" name="is_active" value="1"
+                   {% if event.is_active %}checked{% endif %} />
+            <label class="form-check-label" for="is_active">Event is open for submissions</label>
+          </div>
+        </div>
+      </div>
+      <div class="mb-3">
+        <label for="description" class="form-label">Description</label>
+        <textarea class="form-control" id="description" name="description" rows="2">{{ event.description or '' }}</textarea>
+      </div>
+      <div class="mb-3">
+        <label for="dish_types_input" class="form-label">Dish categories</label>
+        <textarea class="form-control font-monospace" id="dish_types_input" name="dish_types_input" rows="4">{{ event.dish_types | join('\n') }}</textarea>
+        <div class="form-text">One category per line.</div>
+      </div>
+      <div class="d-flex justify-content-end">
+        <button type="submit" class="btn btn-primary">Save settings</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── Host contributions ────────────────────────────────────── -->
+<div class="card shadow-sm mb-4">
+  <div class="card-body p-4">
+    <h2 class="h5 mb-1 fw-semibold">
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-house-fill me-1 text-primary" viewBox="0 0 16 16">
+        <path d="M8.707 1.5a1 1 0 0 0-1.414 0L.646 8.146a.5.5 0 0 0 .708.708L8 2.207l6.646 6.647a.5.5 0 0 0 .708-.708L13 5.793V2.5a.5.5 0 0 0-.5-.5h-1a.5.5 0 0 0-.5.5v1.293z"/>
+        <path d="m8 3.293 6 6V13.5a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 13.5V9.293z"/>
+      </svg>
+      House contributions
+    </h2>
+    <p class="text-muted small mb-4">These are pinned at the top of the guest board.</p>
+
+    <!-- Add host item form -->
+    <form method="post" action="{{ url_for('add_host_item', token=event.management_token) }}" class="row g-2 mb-4 align-items-end">
+      <div class="col-12 col-md-4">
+        <label class="form-label small">Dish name <span class="text-danger">*</span></label>
+        <input type="text" class="form-control form-control-sm" name="dish_name" placeholder="e.g., Turkey" required maxlength="120" />
+      </div>
+      <div class="col-8 col-md-3">
+        <label class="form-label small">Category <span class="text-danger">*</span></label>
+        <select class="form-select form-select-sm" name="dish_type" required>
+          {% for dt in event.dish_types %}
+            <option value="{{ dt }}">{{ dt }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-8 col-md-3">
+        <label class="form-label small">Allergens</label>
+        <input type="text" class="form-control form-control-sm" name="allergens" placeholder="e.g., contains dairy" />
+      </div>
+      <div class="col-8 col-md-1">
+        <label class="form-label small">Notes</label>
+        <input type="text" class="form-control form-control-sm" name="notes" placeholder="" />
+      </div>
+      <div class="col-4 col-md-1">
+        <button type="submit" class="btn btn-primary btn-sm w-100">Add</button>
+      </div>
+    </form>
+
+    {% if host_dishes %}
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>Dish</th><th>Type</th><th>Allergens</th><th>Notes</th><th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for dish in host_dishes %}
+              <tr>
+                <td class="fw-semibold">{{ dish.dish_name }}</td>
+                <td>{{ dish.dish_type }}</td>
+                <td class="text-muted small">{{ dish.allergens | join(', ') or '—' }}</td>
+                <td class="text-muted small">{{ dish.notes or '—' }}</td>
+                <td class="text-end">
+                  <form method="post" action="{{ url_for('delete_host_item', token=event.management_token, dish_id=dish.id) }}"
+                        onsubmit="return confirm('Remove this item?');">
+                    <button type="submit" class="btn btn-sm btn-outline-danger">Remove</button>
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="text-muted small mb-0">No house items yet — add one above.</p>
+    {% endif %}
+  </div>
+</div>
+
+<!-- ── Guest submissions ──────────────────────────────────────── -->
+<div class="card shadow-sm mb-4">
+  <div class="card-body p-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <div>
+        <h2 class="h5 mb-0 fw-semibold">Guest submissions</h2>
+        <p class="text-muted small mb-0">{{ guest_dishes | length }} dish{{ 'es' if guest_dishes | length != 1 else '' }}</p>
+      </div>
+    </div>
+    {% if guest_dishes %}
+      <div class="table-responsive">
+        <table class="table align-middle">
+          <thead class="table-light">
+            <tr>
+              <th>Dish</th><th>Type</th><th>Contributor</th>
+              <th>Allergens</th><th>Dietary</th><th>Notes</th><th>Added</th>
+              <th class="text-end">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for dish in guest_dishes %}
+              <tr>
+                <td class="fw-semibold">{{ dish.dish_name }}</td>
+                <td>{{ dish.dish_type }}</td>
+                <td>{{ dish.contributor }}</td>
+                <td>{{ dish.allergens | join(', ') or '—' }}</td>
+                <td>
+                  {% set tags = dish.tags or [] %}
+                  {% if tags %}
+                    <div class="d-flex flex-wrap gap-1">
+                      {% for tag in tags %}
+                        <span class="badge tag-pill {{ tag.category | tag_category_class }}">{{ tag.name }}</span>
+                      {% endfor %}
+                    </div>
+                  {% else %}
+                    <span class="text-muted">None</span>
+                  {% endif %}
+                </td>
+                <td>{{ dish.notes or '—' }}</td>
+                <td class="text-nowrap small text-muted">{{ dish.created_at | format_dish_timestamp }}</td>
+                <td>
+                  <div class="d-flex justify-content-end gap-2">
+                    <a class="btn btn-sm btn-outline-secondary"
+                       href="{{ url_for('manage_edit_dish_form', token=event.management_token, dish_id=dish.id) }}">Edit</a>
+                    <form method="post"
+                          action="{{ url_for('manage_delete_dish', token=event.management_token, dish_id=dish.id) }}"
+                          onsubmit="return confirm('Delete this dish?');">
+                      <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="text-muted mb-0">No guest submissions yet. Share your event link to get started.</p>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  function copyLink(inputId, btn) {
+    const input = document.getElementById(inputId);
+    navigator.clipboard.writeText(input.value).then(() => {
+      const orig = btn.innerHTML;
+      btn.innerHTML = '&#10003;';
+      btn.classList.add('btn-success');
+      btn.classList.remove('btn-outline-secondary');
+      setTimeout(() => {
+        btn.innerHTML = orig;
+        btn.classList.remove('btn-success');
+        btn.classList.add('btn-outline-secondary');
+      }, 1500);
+    });
+  }
+</script>
+{% endblock %}
