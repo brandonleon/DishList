@@ -13,7 +13,7 @@
         <h1 class="h3 mb-1">Tell everyone what you're bringing</h1>
         <p class="text-secondary mb-4">It only takes a few seconds.</p>
 
-        <form method="post" action="{{ url_for('event_add_submission', slug=event.slug) }}">
+        <form method="post" action="/e/{{ event.slug }}/add">
 
           <!-- Your name -->
           <div class="mb-3">
