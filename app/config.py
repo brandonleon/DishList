@@ -91,11 +91,6 @@ def _load_config_from_file() -> Optional[AppConfig]:
     with CONFIG_PATH.open("r", encoding="utf-8") as fp:
         data = json.load(fp)
 
-    # Migration: if an existing config has networks but no web_admin_enabled
-    # key, preserve the previous always-on behaviour.
-    if "web_admin_enabled" not in data and data.get("admin_networks"):
-        data["web_admin_enabled"] = True
-
     return AppConfig(**data)
 
 

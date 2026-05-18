@@ -45,14 +45,6 @@ class TestLoadConfigFromFile:
         config_path.write_text(json.dumps(cfg.model_dump()))
         assert _load_config_from_file() == cfg
 
-    def test_migration_sets_web_admin_enabled(self, config_path):
-        # Existing config with admin_networks but no web_admin_enabled key.
-        data = {"admin_networks": ["10.0.0.0/8"], "dish_types": ["Main"]}
-        config_path.write_text(json.dumps(data))
-        result = _load_config_from_file()
-        assert result.web_admin_enabled is True
-
-
 # ── _write_config_to_file ──────────────────────────────────────────────────────
 
 class TestWriteConfigToFile:

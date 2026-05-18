@@ -67,19 +67,9 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 TAG_CATEGORY_CLASSES = {
-    # Current categories
     "Dietary preferences": "tag-pill-patterns",
     "Allergen warnings": "tag-pill-avoidances",
     "Content & serving": "tag-pill-logistics",
-    # Legacy
-    "Allergens": "tag-pill-avoidances",
-    # Legacy category names (kept so old data still renders)
-    "Dietary patterns": "tag-pill-patterns",
-    "Ingredient avoidances": "tag-pill-avoidances",
-    "Preparation and cross-contact": "tag-pill-prep",
-    "Additives and content": "tag-pill-additives",
-    "Spice and suitability": "tag-pill-spice",
-    "Serving logistics": "tag-pill-logistics",
 }
 DEFAULT_TAG_CLASS = "tag-pill-generic"
 APP_VERSION = None

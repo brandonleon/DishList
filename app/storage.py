@@ -150,12 +150,6 @@ DEFAULT_TAG_KEYWORDS: Dict[str, List[str]] = {
     "Best served warm": ["best served warm", "best warm", "serve warm"],
     "Reheat: air fryer": ["air fryer", "airfryer"],
 }
-CATEGORY_NORMALIZATION = {
-    # Legacy category renames — keeps existing rows tidy on upgrade
-    "Vegetarian but not vegan (contains eggs/honey)": "Dietary preferences",
-    "Lactose-free (distinct from dairy-free)": "Ingredient avoidances",
-}
-
 _SLUG_ALPHABET = string.ascii_lowercase + string.digits
 
 
@@ -310,17 +304,6 @@ def init_db() -> None:
             ON dish_tags (dish_id)
             """
         )
-        # Migrate is_hidden column into existing databases
-        try:
-            conn.execute("ALTER TABLE tags ADD COLUMN is_hidden INTEGER NOT NULL DEFAULT 0")
-        except sqlite3.OperationalError:
-            pass  # Column already exists
-        # Drop legacy fields superseded by the tag system
-        for col in ("allergens", "dietary_flags"):
-            try:
-                conn.execute(f"ALTER TABLE dishes DROP COLUMN {col}")
-            except sqlite3.OperationalError:
-                pass  # Already dropped or never existed
         _seed_or_migrate_config_entries(conn)
         _seed_or_migrate_tags(conn)
         _seed_or_migrate_keywords(conn)
@@ -854,12 +837,7 @@ def load_app_config_from_db() -> Optional[Tuple[AppConfig, datetime]]:
         return None
     dish_types = [row["value"] for row in dish_rows]
     admin_networks = [row["value"] for row in admin_rows]
-    # Migration: existing DB rows without a web_admin entry and with custom
-    # networks are treated as enabled to preserve prior behaviour.
-    if web_admin_rows:
-        web_admin_enabled = web_admin_rows[0]["value"] == "true"
-    else:
-        web_admin_enabled = bool(admin_networks)
+    web_admin_enabled = bool(web_admin_rows) and web_admin_rows[0]["value"] == "true"
     all_rows = list(dish_rows) + list(admin_rows) + list(web_admin_rows)
     latest_updated = _latest_updated_at(all_rows)
     return AppConfig(
@@ -915,6 +893,7 @@ def _seed_or_migrate_config_entries(conn: sqlite3.Connection) -> None:
     defaults = AppConfig()
     _bulk_insert_config_entries(conn, CONFIG_CATEGORY_DISH_TYPES, defaults.dish_types, timestamp)
     _bulk_insert_config_entries(conn, CONFIG_CATEGORY_ADMIN_NETWORKS, defaults.admin_networks, timestamp)
+    _bulk_insert_config_entries(conn, CONFIG_CATEGORY_WEB_ADMIN, ["false"], timestamp)
 
 
 def _seed_or_migrate_tags(conn: sqlite3.Connection) -> None:
@@ -922,7 +901,6 @@ def _seed_or_migrate_tags(conn: sqlite3.Connection) -> None:
         _insert_default_tags(conn)
     else:
         _add_missing_default_tags(conn)
-    _normalize_existing_tag_categories(conn)
 
 
 def _add_missing_default_tags(conn: sqlite3.Connection) -> None:
@@ -981,15 +959,9 @@ def _insert_default_tags(conn: sqlite3.Connection) -> None:
 
 def _seed_or_migrate_keywords(conn: sqlite3.Connection) -> None:
     """Seed auto-detect keywords for existing tags that have none yet."""
-    # Check if the table exists (may not for very old DBs before this migration)
-    table_exists = conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='tag_keywords'"
-    ).fetchone()
-    if not table_exists:
-        return  # init_db() will create it; called again after creation
     count = conn.execute("SELECT COUNT(*) AS count FROM tag_keywords").fetchone()["count"]
     if count > 0:
-        return  # Already seeded
+        return
     tag_rows = conn.execute("SELECT id, name FROM tags").fetchall()
     for row in tag_rows:
         kws = DEFAULT_TAG_KEYWORDS.get(row["name"], [])
@@ -997,16 +969,3 @@ def _seed_or_migrate_keywords(conn: sqlite3.Connection) -> None:
             _set_tag_keywords_conn(conn, row["id"], kws)
 
 
-def _normalize_existing_tag_categories(conn: sqlite3.Connection) -> None:
-    for name, desired_category in CATEGORY_NORMALIZATION.items():
-        row = conn.execute("SELECT id, category FROM tags WHERE name = ?", (name,)).fetchone()
-        if not row or row["category"] == desired_category:
-            continue
-        pos_row = conn.execute(
-            "SELECT COALESCE(MAX(position), -1) AS max_position FROM tags WHERE category = ?",
-            (desired_category,),
-        ).fetchone()
-        conn.execute(
-            "UPDATE tags SET category = ?, position = ? WHERE id = ?",
-            (desired_category, pos_row["max_position"] + 1, row["id"]),
-        )
