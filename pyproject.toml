@@ -1,6 +1,6 @@
 [project]
 name = "dishlist"
-version = "0.5.0a3"
+version = "0.5.0a4"
 description = "Self-hosted potluck planner"
 readme = "README.md"
 requires-python = ">=3.10"

@@ -184,7 +184,7 @@ toml = [
 
 [[package]]
 name = "dishlist"
-version = "0.5.0a3"
+version = "0.5.0a4"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
