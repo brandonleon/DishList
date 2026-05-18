@@ -38,11 +38,11 @@
       <div class="btn-group" role="group" aria-label="View toggle">
         <a
           class="btn btn-outline-secondary {% if view_mode == 'cards' %}active{% endif %}"
-          href="{{ url_for('event_home', slug=event.slug) }}?view=cards{% if search_query %}&search={{ search_query | urlencode }}{% endif %}"
+          href="/e/{{ event.slug }}?view=cards{% if search_query %}&search={{ search_query | urlencode }}{% endif %}"
         >Cards</a>
         <a
           class="btn btn-outline-secondary {% if view_mode == 'table' %}active{% endif %}"
-          href="{{ url_for('event_home', slug=event.slug) }}?view=table{% if search_query %}&search={{ search_query | urlencode }}{% endif %}"
+          href="/e/{{ event.slug }}?view=table{% if search_query %}&search={{ search_query | urlencode }}{% endif %}"
         >Table</a>
       </div>
     </div>
@@ -100,7 +100,7 @@
   <p class="text-muted small mb-4">
     Need to update a submission? Contact the event host to make changes.
   </p>
-  <form method="get" action="{{ url_for('event_home', slug=event.slug) }}" class="mb-4">
+  <form method="get" action="/e/{{ event.slug }}" class="mb-4">
     <input type="hidden" name="view" value="{{ view_mode }}" />
     <label class="form-label fw-semibold" for="dish-search">Search the {{ 'table' if view_mode == 'table' else 'cards' }}</label>
     <div class="position-relative">
@@ -112,7 +112,7 @@
         placeholder="Start typing to filter dishes..."
         value="{{ search_query }}"
         autocomplete="off"
-        hx-get="{{ url_for('event_table_rows_partial', slug=event.slug) if view_mode == 'table' else url_for('event_card_grid_partial', slug=event.slug) }}"
+        hx-get="{{ '/e/' + event.slug + '/table/rows' if view_mode == 'table' else '/e/' + event.slug + '/cards/grid' }}"
         hx-trigger="keyup changed delay:500ms, search"
         hx-target="{{ '#dish-table-body' if view_mode == 'table' else '#dish-card-grid' }}"
         hx-indicator="#dish-search-indicator"

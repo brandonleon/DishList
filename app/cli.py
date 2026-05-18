@@ -86,12 +86,14 @@ def serve(host: str, port: int, reload: Optional[bool]) -> None:
 
     click.echo(f"Starting DishList on http://{host}:{port}")
     try:
-        uvicorn.run("app.main:app", host=host, port=port, reload=reload)
+        uvicorn.run("app.main:app", host=host, port=port, reload=reload,
+                    proxy_headers=True, forwarded_allow_ips="*")
     except PermissionError:
         if not reload:
             raise
         click.echo("Live reload blocked; starting without reload.", err=True)
-        uvicorn.run("app.main:app", host=host, port=port, reload=False)
+        uvicorn.run("app.main:app", host=host, port=port, reload=False,
+                    proxy_headers=True, forwarded_allow_ips="*")
 
 
 # ── admin ─────────────────────────────────────────────────────────────────────
