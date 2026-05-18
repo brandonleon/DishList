@@ -4,6 +4,8 @@ This file is the canonical source of domain language for DishList.
 It is a glossary only — no implementation details, specs, or decisions.
 Implementation decisions live in `docs/adr/`.
 
+**Link maintenance rule:** All links to ADRs must use relative paths (e.g. `./docs/adr/0001-...md`), never absolute GitHub URLs with a branch name — those break when the branch is merged or deleted. Links to GitHub issues (`https://github.com/brandonleon/DishList/issues/N`) are stable and may be used as-is. When adding a new ADR reference, use a relative path.
+
 ---
 
 ## Event
@@ -24,7 +26,7 @@ The person who creates and manages an Event. The Host sets the Event name, date,
 
 ## Guest
 
-A person who submits a Dish to an Event via the public Guest Board. Guests are not authenticated — their identity on a Submission is a self-reported display name (stored as `contributor` in the database). A Guest can submit multiple Dishes to the same Event.
+A person who submits a Dish to an Event via the public Guest Board. Guests are not authenticated — their identity on a Submission is a self-reported display name (stored as `contributor` in the database). A Guest can submit multiple Dishes to the same Event. See [ADR-0004](./docs/adr/0004-no-user-accounts.md).
 
 ---
 
@@ -54,7 +56,7 @@ A Host-defined label that categorizes Submissions within an Event (e.g. "Main", 
 
 A label applied to a Submission that describes the Dish's dietary properties, allergen content, or serving logistics. Tags are system-managed (defined by the Host via admin tools) and selected by the Guest when submitting.
 
-Tags follow the **warning-based tagging rule**: a Tag describes what a Dish *contains* or *is*, never what it lacks. "Contains peanuts" is valid; "Peanut-free" is not a Tag — it is an unverifiable negative claim. See [ADR-0001](https://github.com/brandonleon/DishList/blob/milestone/v0.5.0-test-coverage-stability/docs/adr/0001-warning-based-tagging-rule.md).
+Tags follow the **warning-based tagging rule**: a Tag describes what a Dish *contains* or *is*, never what it lacks. "Contains peanuts" is valid; "Peanut-free" is not a Tag — it is an unverifiable negative claim. See [ADR-0001](./docs/adr/0001-warning-based-tagging-rule.md).
 
 ## Tag Category
 
@@ -110,7 +112,7 @@ The Host-only page for an Event, accessible via the Management Token. Allows the
 
 ## Application Config
 
-The set of system-wide settings managed by the System Admin: default Dish Types, admin IP allowlist, and Web Admin Panel toggle. The intended source of truth is the `config_entries` table in SQLite. A `data/config.json` file is kept in sync as a migration shim for deployments that predate DB-based config — the file can override the DB if it is newer (last-writer-wins by timestamp). The end state is DB-only; `config.json` is not the source of truth. See [ADR-0005](https://github.com/brandonleon/DishList/blob/milestone/v0.5.0-test-coverage-stability/docs/adr/0005-dual-write-config-migration-shim.md).
+The set of system-wide settings managed by the System Admin: default Dish Types, admin IP allowlist, and Web Admin Panel toggle. The intended source of truth is the `config_entries` table in SQLite. See also [ADR-0003](./docs/adr/0003-sqlite-as-primary-datastore.md). A `data/config.json` file is kept in sync as a migration shim for deployments that predate DB-based config — the file can override the DB if it is newer (last-writer-wins by timestamp). The end state is DB-only; `config.json` is not the source of truth. See [ADR-0005](./docs/adr/0005-dual-write-config-migration-shim.md).
 
 ## System Admin
 
@@ -118,11 +120,11 @@ The operator who deploys and maintains a DishList instance. Distinct from the Ho
 
 ## Web Admin Panel
 
-An optional IP-gated web interface at `/pantry-admin` for System Admin tasks: managing Events, Tags, Dish Types, and admin network settings. Disabled by default. Requires both an explicit enable command and at least one IP or CIDR range in the allowlist before it becomes reachable. Returns 404 when disabled — it does not reveal its own existence. See [ADR-0002](https://github.com/brandonleon/DishList/blob/milestone/v0.5.0-test-coverage-stability/docs/adr/0002-ip-gated-web-admin.md).
+An optional IP-gated web interface at `/pantry-admin` for System Admin tasks: managing Events, Tags, Dish Types, and admin network settings. Disabled by default. Requires both an explicit enable command and at least one IP or CIDR range in the allowlist before it becomes reachable. Returns 404 when disabled — it does not reveal its own existence. See [ADR-0002](./docs/adr/0002-ip-gated-web-admin.md).
 
 ## CLI
 
-The `dishlist` command-line tool. The primary interface for System Admin tasks. Always available regardless of Web Admin Panel state. Operates directly on the database and config files.
+The `dishlist` command-line tool. The primary interface for System Admin tasks. Always available regardless of Web Admin Panel state. Operates directly on the database and config files. See [ADR-0002](./docs/adr/0002-ip-gated-web-admin.md) for the decision that makes the CLI the always-on admin interface.
 
 ## Slug Mode
 
