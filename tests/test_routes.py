@@ -158,3 +158,59 @@ class TestTagKeywordsInAddForm:
         html = client.get("/").text
         assert "tag-picker.js?v=" in html
         assert "styles.css?v=" in html
+
+
+# ── Prometheus metrics endpoint ───────────────────────────────────────────────
+
+class TestMetricsEndpoint:
+    def test_metrics_disabled_by_default_returns_404(self, client):
+        assert client.get("/metrics").status_code == 404
+
+    def test_metrics_enabled_allowed_ip_returns_prometheus(self, client):
+        from app.config import AppConfig, save_config
+        from app.main import app
+
+        cfg = AppConfig(metrics_enabled=True, metrics_networks=["127.0.0.1/32"])
+        save_config(cfg)
+        app.state.config = cfg
+
+        resp = client.get("/metrics")
+        assert resp.status_code == 200
+        assert resp.headers["content-type"].startswith("text/plain")
+        body = resp.text
+        assert "dishlist_http_requests_total" in body
+        assert "dishlist_events_total" in body
+
+    def test_metrics_blocked_ip_returns_403(self, client):
+        from app.config import AppConfig, save_config
+        from app.main import app
+
+        cfg = AppConfig(metrics_enabled=True, metrics_networks=["10.0.0.0/24"])
+        save_config(cfg)
+        app.state.config = cfg
+
+        assert client.get("/metrics").status_code == 403
+
+    def test_metrics_disable_returns_404_even_with_allowlist(self, client):
+        from app.config import AppConfig, save_config
+        from app.main import app
+
+        cfg = AppConfig(metrics_enabled=False, metrics_networks=["127.0.0.1/32"])
+        save_config(cfg)
+        app.state.config = cfg
+
+        assert client.get("/metrics").status_code == 404
+
+    def test_metrics_record_requests(self, client):
+        from app.config import AppConfig, save_config
+        from app.main import app
+
+        cfg = AppConfig(metrics_enabled=True, metrics_networks=["127.0.0.1/32"])
+        save_config(cfg)
+        app.state.config = cfg
+
+        client.get("/")
+        body = client.get("/metrics").text
+        # The landing route should have been recorded with status 200.
+        assert 'path="/"' in body
+        assert 'status="200"' in body

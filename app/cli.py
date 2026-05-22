@@ -17,6 +17,12 @@ Usage:
     dishlist admin tags reset             Reset tag library to defaults
     dishlist admin events list            List all events
     dishlist admin events delete <id>     Delete an event and all its dishes
+    dishlist admin metrics status         Show /metrics endpoint status
+    dishlist admin metrics enable         Enable the Prometheus /metrics endpoint
+    dishlist admin metrics disable        Disable the Prometheus /metrics endpoint
+    dishlist admin metrics networks list  List allowed metrics scrape networks
+    dishlist admin metrics networks add <cidr>
+    dishlist admin metrics networks remove <cidr>
 """
 from __future__ import annotations
 
@@ -130,6 +136,25 @@ def admin_status() -> None:
     click.echo(click.style("Allowed admin networks:", bold=True))
     for net in config.admin_networks:
         click.echo(f"  • {net}")
+    click.echo()
+
+    metrics_label = (
+        click.style("enabled", fg="green")
+        if config.metrics_enabled
+        else click.style("disabled", fg="yellow")
+    )
+    click.echo(f"  Metrics      {metrics_label}")
+    if not config.metrics_enabled:
+        click.echo(
+            click.style("               Run: ", dim=True)
+            + "dishlist admin metrics enable"
+        )
+    click.echo(click.style("Allowed metrics networks:", bold=True))
+    if config.metrics_networks:
+        for net in config.metrics_networks:
+            click.echo(f"  • {net}")
+    else:
+        click.echo("  (none — endpoint will reject all clients)")
     click.echo()
 
     click.echo(click.style("Default dish categories:", bold=True))
@@ -383,3 +408,113 @@ def events_delete(event_id: int) -> None:
 
     delete_event(event_id)
     _ok(f"Deleted event {event_id}")
+
+
+# ── admin metrics ─────────────────────────────────────────────────────────────
+
+@admin.group()
+def metrics() -> None:
+    """Enable, disable, and gate the Prometheus /metrics endpoint."""
+
+
+@metrics.command("status")
+def metrics_status() -> None:
+    """Show the /metrics endpoint state and its IP allowlist."""
+    config = _load()
+    state = (
+        click.style("enabled", fg="green")
+        if config.metrics_enabled
+        else click.style("disabled", fg="yellow")
+    )
+    click.echo(f"  /metrics  {state}")
+    click.echo()
+    click.echo(click.style("Allowed metrics networks:", bold=True))
+    if not config.metrics_networks:
+        click.echo("  (none — endpoint will reject every client)")
+    else:
+        for net in config.metrics_networks:
+            click.echo(f"  • {net}")
+
+
+@metrics.command("enable")
+@click.option(
+    "--network",
+    default=None,
+    metavar="IP_OR_CIDR",
+    help="Add an IP or CIDR to the metrics allowlist at the same time.",
+)
+def metrics_enable(network: Optional[str]) -> None:
+    """Enable the Prometheus /metrics endpoint."""
+    config = _load()
+
+    if network:
+        network = _validate_network(network)
+        if network not in config.metrics_networks:
+            config.metrics_networks.append(network)
+            _ok(f"Added metrics network: {network}")
+
+    if not config.metrics_networks:
+        _err(
+            "No allowed metrics networks configured.\n"
+            "       Add one first:  dishlist admin metrics networks add <ip-or-cidr>\n"
+            "       Or combine:     dishlist admin metrics enable --network 10.0.0.5"
+        )
+        sys.exit(1)
+
+    config.metrics_enabled = True
+    _save(config)
+    _ok("Prometheus /metrics enabled")
+    click.echo(f"  Allowed from: {', '.join(config.metrics_networks)}")
+
+
+@metrics.command("disable")
+def metrics_disable() -> None:
+    """Disable the Prometheus /metrics endpoint."""
+    config = _load()
+    config.metrics_enabled = False
+    _save(config)
+    _ok("Prometheus /metrics disabled.")
+
+
+@metrics.group("networks")
+def metrics_networks_group() -> None:
+    """Manage IP addresses and CIDR ranges allowed to scrape /metrics."""
+
+
+@metrics_networks_group.command("list")
+def metrics_networks_list() -> None:
+    """List allowed metrics networks."""
+    config = _load()
+    if not config.metrics_networks:
+        click.echo("No metrics networks configured.")
+        return
+    click.echo(click.style("Allowed metrics networks:", bold=True))
+    for net in config.metrics_networks:
+        click.echo(f"  {net}")
+
+
+@metrics_networks_group.command("add")
+@click.argument("network")
+def metrics_networks_add(network: str) -> None:
+    """Add an IP address or CIDR range to the metrics allowlist."""
+    network = _validate_network(network)
+    config = _load()
+    if network in config.metrics_networks:
+        click.echo(f"'{network}' is already in the metrics allowlist.")
+        return
+    config.metrics_networks.append(network)
+    _save(config)
+    _ok(f"Added {network}")
+
+
+@metrics_networks_group.command("remove")
+@click.argument("network")
+def metrics_networks_remove(network: str) -> None:
+    """Remove an IP address or CIDR range from the metrics allowlist."""
+    config = _load()
+    if network not in config.metrics_networks:
+        _err(f"'{network}' is not in the metrics allowlist.")
+        sys.exit(1)
+    config.metrics_networks.remove(network)
+    _save(config)
+    _ok(f"Removed {network}")

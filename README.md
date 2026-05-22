@@ -12,6 +12,7 @@ A self-hosted potluck planner. Create an event, share the link, and let guests l
 - **Management page** — token-gated host dashboard to edit event settings, add/remove host items, and curate guest dishes
 - **CLI admin** — full `dishlist` command-line tool for managing configuration, tags, networks, and events without a browser
 - **Web admin** — optional `/pantry-admin` panel (disabled by default; enable via CLI)
+- **Prometheus metrics** — optional `/metrics` endpoint with its own IP allowlist (disabled by default; enable via CLI)
 - **SQLite storage** — single `data/dishlist.db` file, trivial to back up or mount in Docker
 
 ## Getting started
@@ -56,6 +57,17 @@ dishlist admin tags reset               Reset tag library to built-in defaults
 
 dishlist admin events list              List all events
 dishlist admin events delete <id>       Delete an event and all its dishes
+
+dishlist admin metrics status           Show /metrics endpoint status
+dishlist admin metrics enable           Enable the Prometheus /metrics endpoint
+dishlist admin metrics enable --network IP
+                                        Enable and add an allowed scrape IP
+dishlist admin metrics disable          Disable the Prometheus /metrics endpoint
+dishlist admin metrics networks list    List allowed metrics scrape networks
+dishlist admin metrics networks add <cidr>
+                                        Add a CIDR to the metrics allowlist
+dishlist admin metrics networks remove <cidr>
+                                        Remove a CIDR from the metrics allowlist
 ```
 
 ## Web admin
@@ -76,6 +88,31 @@ dishlist admin web disable
 ```
 
 When disabled, `/pantry-admin` returns 404.
+
+## Prometheus metrics
+
+A Prometheus-format `/metrics` endpoint is available but **disabled by default**.
+It has its own IP allowlist separate from the admin panel, so a scraper host can
+be allowed without granting it admin access.
+
+```bash
+# Enable and add your scraper to the allowlist in one step
+dishlist admin metrics enable --network 10.0.0.5
+# or separately
+dishlist admin metrics networks add 10.0.0.5
+dishlist admin metrics enable
+```
+
+Disable again at any time:
+
+```bash
+dishlist admin metrics disable
+```
+
+When disabled, `/metrics` returns 404; when enabled, requests from outside the
+allowlist get 403. Exposed metrics include `dishlist_http_requests_total`,
+`dishlist_http_request_duration_seconds`, `dishlist_events_total`, and
+`dishlist_dishes_total`.
 
 ## Docker
 
@@ -123,6 +160,7 @@ docker exec dishlist dishlist admin events list
 | `/e/{slug}/add` | Guest dish submission form |
 | `/manage/{token}` | Host management dashboard |
 | `/pantry-admin` | IP-gated web admin (disabled by default) |
+| `/metrics` | IP-gated Prometheus metrics (disabled by default) |
 
 Event slugs are derived from the event name (max 32 chars including a 4-char uniqueness suffix) or fully random (8 chars) for more private events.
 

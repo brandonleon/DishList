@@ -83,6 +83,22 @@
 {% endfor %}</textarea>
             <div class="form-text">IP addresses or CIDR ranges (e.g. 192.168.1.0/24), one per line.</div>
           </div>
+          <div class="mb-4">
+            <label for="metrics_networks_input" class="form-label">
+              Allowed metrics networks
+              {% if config.metrics_enabled %}
+                <span class="badge bg-success-subtle text-success ms-1">/metrics enabled</span>
+              {% else %}
+                <span class="badge bg-secondary-subtle text-secondary ms-1">/metrics disabled</span>
+              {% endif %}
+            </label>
+            <textarea class="form-control font-monospace" id="metrics_networks_input" name="metrics_networks_input" rows="3">{% for block in config.metrics_networks %}{{ block }}
+{% endfor %}</textarea>
+            <div class="form-text">
+              IP addresses or CIDR ranges allowed to scrape <code>/metrics</code>.
+              Toggle the endpoint with <code>dishlist admin metrics enable</code> / <code>disable</code>.
+            </div>
+          </div>
           <div class="d-flex justify-content-end">
             <button type="submit" class="btn btn-danger">Save global settings</button>
           </div>
