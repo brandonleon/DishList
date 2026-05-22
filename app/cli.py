@@ -2,6 +2,7 @@
 
 Usage:
     dishlist serve                        Start the web server
+    dishlist admin reload                 Reload config in the running server
     dishlist admin status                 Show current configuration
     dishlist admin web enable             Enable /pantry-admin (optionally add a network)
     dishlist admin web disable            Disable /pantry-admin
@@ -105,6 +106,49 @@ def serve(host: str, port: int, reload: Optional[bool]) -> None:
 @cli.group()
 def admin() -> None:
     """Manage DishList configuration."""
+
+
+@admin.command("reload")
+def admin_reload() -> None:
+    """Signal the running server to reload its configuration.
+
+    Sends SIGUSR1 to the server process (identified via data/dishlist.pid).
+    Has no effect if the server is not running — start it with
+    ``dishlist serve``.
+    """
+    import signal as _signal
+
+    from app.config import DATA_DIR
+
+    pid_path = DATA_DIR / "dishlist.pid"
+    if not pid_path.exists():
+        _err(
+            "No PID file found. Is the server running?\n"
+            "       Use the web admin Reload button, or restart the server."
+        )
+        sys.exit(1)
+
+    raw = pid_path.read_text().strip()
+    try:
+        pid = int(raw)
+    except ValueError:
+        _err(f"PID file contains unexpected value: {raw!r}")
+        sys.exit(1)
+
+    try:
+        os.kill(pid, _signal.SIGUSR1)
+    except ProcessLookupError:
+        _err(f"No process with PID {pid}. Server may have stopped. Clean up: {pid_path}")
+        sys.exit(1)
+    except PermissionError:
+        _err(f"No permission to signal PID {pid}.")
+        sys.exit(1)
+    except AttributeError:
+        _err("SIGUSR1 is not supported on this platform. Use the web admin Reload button.")
+        sys.exit(1)
+
+    _ok(f"Reload signal sent (PID {pid}).")
+    click.echo("  The server will apply the latest configuration immediately.")
 
 
 @admin.command("status")

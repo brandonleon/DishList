@@ -160,6 +160,60 @@ class TestTagKeywordsInAddForm:
         assert "styles.css?v=" in html
 
 
+# ── Admin reload endpoint ─────────────────────────────────────────────────────
+
+class TestAdminReloadEndpoint:
+    def _enable_admin(self, app_state):
+        from app.config import AppConfig, save_config
+        from app.main import app
+
+        cfg = AppConfig(web_admin_enabled=True, admin_networks=["127.0.0.1/32"])
+        save_config(cfg)
+        app.state.config = cfg
+
+    def test_reload_disabled_admin_returns_404(self, client):
+        from app.config import AppConfig
+        from app.main import app
+
+        app.state.config = AppConfig(web_admin_enabled=False, admin_networks=["127.0.0.1/32"])
+        assert client.post("/pantry-admin/reload").status_code == 404
+
+    def test_reload_blocked_ip_returns_403(self, client):
+        from app.config import AppConfig, save_config
+        from app.main import app
+
+        cfg = AppConfig(web_admin_enabled=True, admin_networks=["10.0.0.0/24"])
+        save_config(cfg)
+        app.state.config = cfg
+
+        assert client.post("/pantry-admin/reload").status_code == 403
+
+    def test_reload_refreshes_config_and_redirects(self, client):
+        from app.config import AppConfig, save_config
+        from app.main import app
+
+        cfg = AppConfig(web_admin_enabled=True, admin_networks=["127.0.0.1/32"])
+        save_config(cfg)
+        app.state.config = cfg
+
+        # Change config on disk without touching app.state
+        updated = AppConfig(
+            web_admin_enabled=True,
+            admin_networks=["127.0.0.1/32"],
+            metrics_enabled=True,
+            metrics_networks=["10.0.0.0/8"],
+        )
+        save_config(updated)
+
+        resp = client.post("/pantry-admin/reload", follow_redirects=False)
+        assert resp.status_code == 303
+        assert "tag_success" in resp.headers["location"]
+
+        # app.state should now reflect the updated config
+        assert app.state.config.metrics_enabled is True
+        assert "10.0.0.0/8" in app.state.config.metrics_networks
+
+
 # ── Prometheus metrics endpoint ───────────────────────────────────────────────
 
 class TestMetricsEndpoint:

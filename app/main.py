@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import ipaddress
 import json
+import os
+import signal
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
@@ -18,7 +20,7 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Resp
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from .config import AppConfig, load_config, save_config
+from .config import AppConfig, DATA_DIR, load_config, save_config
 from .metrics import (
     DISHES_TOTAL,
     EVENTS_TOTAL,
@@ -59,6 +61,7 @@ STATIC_DIR = BASE_DIR / "static"
 
 ADMIN_PATH = "/pantry-admin"
 METRICS_PATH = "/metrics"
+PID_PATH = DATA_DIR / "dishlist.pid"
 
 app = FastAPI(title="DishList")
 app.add_middleware(PrometheusMiddleware, exclude_paths=(METRICS_PATH,))
@@ -133,10 +136,41 @@ templates.env.filters["tag_category_class"] = _tag_category_class
 templates.env.globals["app_version"] = APP_VERSION
 
 
+def _do_reload_config() -> None:
+    """Force-refresh the in-memory config from the persisted store."""
+    app.state.config = load_config()
+
+
+def _handle_sigusr1(signum, frame) -> None:  # noqa: ANN001
+    """SIGUSR1 handler: reload config without restarting the server."""
+    _do_reload_config()
+
+
 @app.on_event("startup")
 def _startup() -> None:
     init_db()
     app.state.config = load_config()
+    # Write PID so `dishlist admin reload` can signal us.
+    try:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        PID_PATH.write_text(str(os.getpid()))
+    except OSError:  # pragma: no cover
+        pass
+    # Install SIGUSR1 → config reload.
+    # Guards: SIGUSR1 absent on Windows; signal() requires the main thread.
+    try:
+        signal.signal(signal.SIGUSR1, _handle_sigusr1)
+    except (OSError, AttributeError, ValueError):
+        # ValueError: "signal only works in main thread" (e.g. tests)
+        pass
+
+
+@app.on_event("shutdown")
+def _shutdown() -> None:
+    try:
+        PID_PATH.unlink(missing_ok=True)
+    except OSError:  # pragma: no cover
+        pass
 
 
 def get_config() -> AppConfig:
@@ -658,8 +692,19 @@ def admin_page(request: Request) -> HTMLResponse:
             "admin_path": ADMIN_PATH,
             "tag_counts": get_tag_counts(),
             "admin_tags_url": str(request.url_for("admin_tags_page")),
+            "tag_success": request.query_params.get("tag_success"),
+            "tag_error": request.query_params.get("tag_error"),
         },
     )
+
+
+@app.post(f"{ADMIN_PATH}/reload")
+def reload_config(request: Request) -> RedirectResponse:
+    """Force a config reload from the persisted store into app.state."""
+    config = get_config()
+    _check_admin_access(request, config)
+    _do_reload_config()
+    return _redirect_to_admin(request, success="Configuration reloaded")
 
 
 @app.get(f"{ADMIN_PATH}/tags", response_class=HTMLResponse)

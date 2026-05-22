@@ -7,6 +7,19 @@
       <strong>System admin</strong>&nbsp;— This control room is only for trusted administrators. Keep this URL close.
     </div>
 
+    {% if tag_success %}
+      <div class="alert alert-success alert-dismissible" role="alert">
+        {{ tag_success }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+      </div>
+    {% endif %}
+    {% if tag_error %}
+      <div class="alert alert-danger alert-dismissible" role="alert">
+        {{ tag_error }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+      </div>
+    {% endif %}
+
     <!-- ── All events ──────────────────────────────────────────── -->
     <div class="card shadow-sm mb-4">
       <div class="card-body p-4">
@@ -103,6 +116,24 @@
             <button type="submit" class="btn btn-danger">Save global settings</button>
           </div>
         </form>
+      </div>
+    </div>
+
+    <!-- ── Reload config ────────────────────────────────────── -->
+    <div class="card shadow-sm mb-4">
+      <div class="card-body p-4">
+        <div class="d-flex justify-content-between align-items-center">
+          <div>
+            <h2 class="h5 mb-1 fw-semibold">Reload configuration</h2>
+            <p class="text-muted small mb-0">
+              Apply changes made via the CLI without restarting the server.
+              Equivalent to <code>dishlist admin reload</code>.
+            </p>
+          </div>
+          <form method="post" action="{{ url_for('reload_config') }}">
+            <button type="submit" class="btn btn-outline-secondary btn-sm">Reload config</button>
+          </form>
+        </div>
       </div>
     </div>
 

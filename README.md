@@ -58,6 +58,8 @@ dishlist admin tags reset               Reset tag library to built-in defaults
 dishlist admin events list              List all events
 dishlist admin events delete <id>       Delete an event and all its dishes
 
+dishlist admin reload                   Reload config in the running server
+
 dishlist admin metrics status           Show /metrics endpoint status
 dishlist admin metrics enable           Enable the Prometheus /metrics endpoint
 dishlist admin metrics enable --network IP
@@ -88,6 +90,23 @@ dishlist admin web disable
 ```
 
 When disabled, `/pantry-admin` returns 404.
+
+## Reloading configuration
+
+After any `dishlist admin` command that changes settings, the running server
+needs to pick up the new config. You can do this without a full restart:
+
+```bash
+# Signal the running server to reload (writes data/dishlist.pid on startup)
+dishlist admin reload
+
+# Or click "Reload config" in the /pantry-admin web panel
+```
+
+The `reload` command sends `SIGUSR1` to the server process identified by
+`data/dishlist.pid`. If the PID file is absent (server not running, or
+started without the PID being written) the command exits with a clear error.
+The equivalent web button appears at the top of the `/pantry-admin` page.
 
 ## Prometheus metrics
 
