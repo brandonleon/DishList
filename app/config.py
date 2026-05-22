@@ -30,6 +30,9 @@ class AppConfig(BaseModel):
     # Migration: existing config.json files without this key and with custom
     # networks are treated as enabled to preserve prior behaviour.
     web_admin_enabled: bool = False
+    metrics_networks: List[str] = Field(default_factory=lambda: ["127.0.0.1/32"])
+    # False by default — use `dishlist admin metrics enable` to turn on.
+    metrics_enabled: bool = False
 
 
 def _ensure_data_dir() -> None:
