@@ -25,6 +25,7 @@ Usage:
     dishlist admin metrics networks add <cidr>
     dishlist admin metrics networks remove <cidr>
 """
+
 from __future__ import annotations
 
 import ipaddress
@@ -36,13 +37,16 @@ import click
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
 
+
 def _load():
     from app.config import load_config
+
     return load_config()
 
 
 def _save(config):
     from app.config import save_config
+
     save_config(config)
 
 
@@ -67,12 +71,14 @@ def _validate_network(value: str) -> str:
 
 # ── Root ──────────────────────────────────────────────────────────────────────
 
+
 @click.group()
 def cli() -> None:
     """DishList — potluck planner management CLI."""
 
 
 # ── serve ─────────────────────────────────────────────────────────────────────
+
 
 @cli.command()
 @click.option("--host", default="0.0.0.0", show_default=True, help="Bind address.")
@@ -102,6 +108,7 @@ def serve(host: str, port: int, reload: Optional[bool]) -> None:
 
 
 # ── admin ─────────────────────────────────────────────────────────────────────
+
 
 @cli.group()
 def admin() -> None:
@@ -138,13 +145,17 @@ def admin_reload() -> None:
     try:
         os.kill(pid, _signal.SIGUSR1)
     except ProcessLookupError:
-        _err(f"No process with PID {pid}. Server may have stopped. Clean up: {pid_path}")
+        _err(
+            f"No process with PID {pid}. Server may have stopped. Clean up: {pid_path}"
+        )
         sys.exit(1)
     except PermissionError:
         _err(f"No permission to signal PID {pid}.")
         sys.exit(1)
     except AttributeError:
-        _err("SIGUSR1 is not supported on this platform. Use the web admin Reload button.")
+        _err(
+            "SIGUSR1 is not supported on this platform. Use the web admin Reload button."
+        )
         sys.exit(1)
 
     _ok(f"Reload signal sent (PID {pid}).")
@@ -171,8 +182,7 @@ def admin_status() -> None:
     click.echo(f"  Web admin    {web_label}")
     if not config.web_admin_enabled:
         click.echo(
-            click.style("               Run: ", dim=True)
-            + "dishlist admin web enable"
+            click.style("               Run: ", dim=True) + "dishlist admin web enable"
         )
     click.echo(f"  Events       {len(events)}")
     click.echo()
@@ -215,6 +225,7 @@ def admin_status() -> None:
 
 
 # ── admin web ─────────────────────────────────────────────────────────────────
+
 
 @admin.group()
 def web() -> None:
@@ -264,6 +275,7 @@ def web_disable() -> None:
 
 # ── admin networks ────────────────────────────────────────────────────────────
 
+
 @admin.group()
 def networks() -> None:
     """Manage IP addresses and CIDR ranges allowed to access web admin."""
@@ -310,6 +322,7 @@ def networks_remove(network: str) -> None:
 
 # ── admin dish-types ──────────────────────────────────────────────────────────
 
+
 @admin.group("dish-types")
 def dish_types() -> None:
     """Manage the default dish categories seeded into new events."""
@@ -351,6 +364,7 @@ def dish_types_remove(name: str) -> None:
 
 
 # ── admin tags ────────────────────────────────────────────────────────────────
+
 
 @admin.group()
 def tags() -> None:
@@ -416,6 +430,7 @@ def tags_reset() -> None:
 
 # ── admin events ──────────────────────────────────────────────────────────────
 
+
 @admin.group()
 def events() -> None:
     """View and manage events."""
@@ -436,7 +451,11 @@ def events_list() -> None:
     click.echo("  " + "─" * (len(header) - 2))
     for event in event_list:
         dishes = load_dishes_for_event(event.id)
-        status = click.style("Open  ", fg="green") if event.is_active else click.style("Closed", fg="yellow")
+        status = (
+            click.style("Open  ", fg="green")
+            if event.is_active
+            else click.style("Closed", fg="yellow")
+        )
         date_str = str(event.event_date) if event.event_date else "—"
         click.echo(
             f"  {event.id:>3}  {event.name:<32}  {date_str:<12}  {status}  {len(dishes)}"
@@ -455,6 +474,7 @@ def events_delete(event_id: int) -> None:
 
 
 # ── admin metrics ─────────────────────────────────────────────────────────────
+
 
 @admin.group()
 def metrics() -> None:
@@ -555,6 +575,7 @@ def metrics_networks_add(network: str) -> None:
 @click.argument("network")
 def metrics_networks_remove(network: str) -> None:
     """Remove an IP address or CIDR range from the metrics allowlist."""
+    network = _validate_network(network)
     config = _load()
     if network not in config.metrics_networks:
         _err(f"'{network}' is not in the metrics allowlist.")
