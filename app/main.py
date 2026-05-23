@@ -4,6 +4,7 @@ import ipaddress
 import json
 import os
 import signal
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
@@ -63,7 +64,46 @@ ADMIN_PATH = "/pantry-admin"
 METRICS_PATH = "/metrics"
 PID_PATH = DATA_DIR / "dishlist.pid"
 
-app = FastAPI(title="DishList")
+
+def _do_reload_config() -> None:
+    """Force-refresh the in-memory config from the persisted store."""
+    app.state.config = load_config()
+
+
+def _handle_sigusr1(signum, frame) -> None:  # noqa: ANN001
+    """SIGUSR1 handler: reload config without restarting the server."""
+    _do_reload_config()
+
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI):  # type: ignore[type-arg]
+    # ── startup ──────────────────────────────────────────────────────────────
+    init_db()
+    app.state.config = load_config()
+    # Write PID so `dishlist admin reload` can signal us.
+    try:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        PID_PATH.write_text(str(os.getpid()))
+    except OSError:  # pragma: no cover
+        pass
+    # Install SIGUSR1 → config reload.
+    # Guards: SIGUSR1 absent on Windows; signal() requires the main thread.
+    try:
+        signal.signal(signal.SIGUSR1, _handle_sigusr1)
+    except (OSError, AttributeError, ValueError):
+        # ValueError: "signal only works in main thread" (e.g. tests)
+        pass
+
+    yield
+
+    # ── shutdown ─────────────────────────────────────────────────────────────
+    try:
+        PID_PATH.unlink(missing_ok=True)
+    except OSError:  # pragma: no cover
+        pass
+
+
+app = FastAPI(title="DishList", lifespan=_lifespan)
 app.add_middleware(PrometheusMiddleware, exclude_paths=(METRICS_PATH,))
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
@@ -136,43 +176,6 @@ templates.env.filters["tag_category_class"] = _tag_category_class
 templates.env.globals["app_version"] = APP_VERSION
 
 
-def _do_reload_config() -> None:
-    """Force-refresh the in-memory config from the persisted store."""
-    app.state.config = load_config()
-
-
-def _handle_sigusr1(signum, frame) -> None:  # noqa: ANN001
-    """SIGUSR1 handler: reload config without restarting the server."""
-    _do_reload_config()
-
-
-@app.on_event("startup")
-def _startup() -> None:
-    init_db()
-    app.state.config = load_config()
-    # Write PID so `dishlist admin reload` can signal us.
-    try:
-        DATA_DIR.mkdir(parents=True, exist_ok=True)
-        PID_PATH.write_text(str(os.getpid()))
-    except OSError:  # pragma: no cover
-        pass
-    # Install SIGUSR1 → config reload.
-    # Guards: SIGUSR1 absent on Windows; signal() requires the main thread.
-    try:
-        signal.signal(signal.SIGUSR1, _handle_sigusr1)
-    except (OSError, AttributeError, ValueError):
-        # ValueError: "signal only works in main thread" (e.g. tests)
-        pass
-
-
-@app.on_event("shutdown")
-def _shutdown() -> None:
-    try:
-        PID_PATH.unlink(missing_ok=True)
-    except OSError:  # pragma: no cover
-        pass
-
-
 def get_config() -> AppConfig:
     return getattr(app.state, "config", load_config())
 
@@ -194,8 +197,12 @@ def _filter_dishes(dishes: List[DishEntry], query: str) -> List[DishEntry]:
     filtered: List[DishEntry] = []
     for dish in dishes:
         searchable = [
-            dish.dish_name, dish.contributor, dish.dish_type,
-            dish.notes or "", ", ".join(dish.allergens), ", ".join(dish.dietary_flags),
+            dish.dish_name,
+            dish.contributor,
+            dish.dish_type,
+            dish.notes or "",
+            ", ".join(dish.allergens),
+            ", ".join(dish.dietary_flags),
         ]
         if any(search in chunk.lower() for chunk in searchable if chunk):
             filtered.append(dish)
@@ -283,15 +290,20 @@ def create_event_submit(
     host_item_types: List[str] = Form(default=[]),
     host_item_notes: List[str] = Form(default=[]),
 ) -> RedirectResponse:
-    dish_types = [line.strip() for line in dish_types_input.splitlines() if line.strip()]
+    dish_types = [
+        line.strip() for line in dish_types_input.splitlines() if line.strip()
+    ]
     if not dish_types:
-        raise HTTPException(status_code=400, detail="At least one dish type is required")
+        raise HTTPException(
+            status_code=400, detail="At least one dish type is required"
+        )
 
     # Validate event_date if provided
     clean_date: Optional[str] = None
     if event_date and event_date.strip():
         try:
             from datetime import date
+
             date.fromisoformat(event_date.strip())
             clean_date = event_date.strip()
         except ValueError:
@@ -299,7 +311,9 @@ def create_event_submit(
 
     event = create_event(
         name=name,
-        description=description.strip() if description and description.strip() else None,
+        description=description.strip()
+        if description and description.strip()
+        else None,
         event_date=clean_date,
         host_name=host_name.strip() if host_name and host_name.strip() else "The House",
         dish_types=dish_types,
@@ -307,7 +321,9 @@ def create_event_submit(
     )
 
     # Add host contributions
-    for item_name, item_type, item_notes in zip(host_item_names, host_item_types, host_item_notes):
+    for item_name, item_type, item_notes in zip(
+        host_item_names, host_item_types, host_item_notes
+    ):
         item_name = item_name.strip()
         if not item_name:
             continue
@@ -361,7 +377,9 @@ def event_home(request: Request, slug: str) -> HTMLResponse:
     all_dishes = load_dishes_for_event(event.id)
     host_dishes = [d for d in all_dishes if d.is_host_item]
     guest_dishes = [d for d in all_dishes if not d.is_host_item]
-    filtered_guests = _filter_dishes(guest_dishes, search_query) if search_query else guest_dishes
+    filtered_guests = (
+        _filter_dishes(guest_dishes, search_query) if search_query else guest_dishes
+    )
 
     return templates.TemplateResponse(
         request,
@@ -382,14 +400,13 @@ def event_home(request: Request, slug: str) -> HTMLResponse:
 def event_add_form(request: Request, slug: str) -> HTMLResponse:
     event = _get_event_by_slug_or_404(slug)
     if not event.is_active:
-        raise HTTPException(status_code=403, detail="This event is no longer accepting submissions")
+        raise HTTPException(
+            status_code=403, detail="This event is no longer accepting submissions"
+        )
     tag_groups = load_tag_groups()
     # Build keyword map for client-side auto-detection: {tagId: ["kw1", "kw2"]}
     tag_kw_map = {
-        tag.id: tag.keywords
-        for _, tags in tag_groups
-        for tag in tags
-        if tag.keywords
+        tag.id: tag.keywords for _, tags in tag_groups for tag in tags if tag.keywords
     }
     hidden_count = sum(1 for _, tags in tag_groups for tag in tags if tag.is_hidden)
     return templates.TemplateResponse(
@@ -418,7 +435,9 @@ def event_add_submission(
 ) -> RedirectResponse:
     event = _get_event_by_slug_or_404(slug)
     if not event.is_active:
-        raise HTTPException(status_code=403, detail="This event is no longer accepting submissions")
+        raise HTTPException(
+            status_code=403, detail="This event is no longer accepting submissions"
+        )
     if dish_type not in event.dish_types:
         raise HTTPException(status_code=400, detail="Unknown dish type")
 
@@ -447,7 +466,9 @@ def event_add_submission(
 
 
 @app.get("/e/{slug}/table/rows", response_class=HTMLResponse)
-def event_table_rows_partial(request: Request, slug: str, search: str = "") -> HTMLResponse:
+def event_table_rows_partial(
+    request: Request, slug: str, search: str = ""
+) -> HTMLResponse:
     event = _get_event_by_slug_or_404(slug)
     all_dishes = load_dishes_for_event(event.id)
     guest_dishes = [d for d in all_dishes if not d.is_host_item]
@@ -458,7 +479,9 @@ def event_table_rows_partial(request: Request, slug: str, search: str = "") -> H
 
 
 @app.get("/e/{slug}/cards/grid", response_class=HTMLResponse)
-def event_card_grid_partial(request: Request, slug: str, search: str = "") -> HTMLResponse:
+def event_card_grid_partial(
+    request: Request, slug: str, search: str = ""
+) -> HTMLResponse:
     event = _get_event_by_slug_or_404(slug)
     all_dishes = load_dishes_for_event(event.id)
     guest_dishes = [d for d in all_dishes if not d.is_host_item]
@@ -506,14 +529,19 @@ def update_event_settings(
     is_active: Optional[str] = Form(None),
 ) -> RedirectResponse:
     event = _get_event_by_token_or_404(token)
-    dish_types = [line.strip() for line in dish_types_input.splitlines() if line.strip()]
+    dish_types = [
+        line.strip() for line in dish_types_input.splitlines() if line.strip()
+    ]
     if not dish_types:
-        raise HTTPException(status_code=400, detail="At least one dish type is required")
+        raise HTTPException(
+            status_code=400, detail="At least one dish type is required"
+        )
 
     clean_date: Optional[str] = None
     if event_date and event_date.strip():
         try:
             from datetime import date
+
             date.fromisoformat(event_date.strip())
             clean_date = event_date.strip()
         except ValueError:
@@ -522,7 +550,9 @@ def update_event_settings(
     update_event(
         event_id=event.id,
         name=name,
-        description=description.strip() if description and description.strip() else None,
+        description=description.strip()
+        if description and description.strip()
+        else None,
         event_date=clean_date,
         host_name=host_name.strip() if host_name and host_name.strip() else "The House",
         dish_types=dish_types,
@@ -655,7 +685,9 @@ def manage_delete_dish(request: Request, token: str, dish_id: int) -> RedirectRe
 # ── System admin routes (IP-gated) ─────────────────────────────────────────────
 
 
-def _redirect_to_admin(request: Request, success: Optional[str] = None, error: Optional[str] = None) -> RedirectResponse:
+def _redirect_to_admin(
+    request: Request, success: Optional[str] = None, error: Optional[str] = None
+) -> RedirectResponse:
     target = str(request.url_for("admin_page"))
     params = {}
     if success:
@@ -667,7 +699,9 @@ def _redirect_to_admin(request: Request, success: Optional[str] = None, error: O
     return RedirectResponse(url=target, status_code=status.HTTP_303_SEE_OTHER)
 
 
-def _redirect_to_admin_tags(request: Request, success: Optional[str] = None, error: Optional[str] = None) -> RedirectResponse:
+def _redirect_to_admin_tags(
+    request: Request, success: Optional[str] = None, error: Optional[str] = None
+) -> RedirectResponse:
     target = str(request.url_for("admin_tags_page"))
     params = {}
     if success:
@@ -737,10 +771,16 @@ def update_admin_settings(
     config = get_config()
     _check_admin_access(request, config)
 
-    dish_types = [line.strip() for line in dish_types_input.splitlines() if line.strip()]
-    networks = [line.strip() for line in admin_networks_input.splitlines() if line.strip()]
+    dish_types = [
+        line.strip() for line in dish_types_input.splitlines() if line.strip()
+    ]
+    networks = [
+        line.strip() for line in admin_networks_input.splitlines() if line.strip()
+    ]
     if not dish_types:
-        raise HTTPException(status_code=400, detail="At least one dish type is required")
+        raise HTTPException(
+            status_code=400, detail="At least one dish type is required"
+        )
     if not networks:
         raise HTTPException(status_code=400, detail="At least one network is required")
 
@@ -760,7 +800,9 @@ def update_admin_settings(
     )
     save_config(new_config)
     app.state.config = new_config
-    return RedirectResponse(url=request.url_for("admin_page"), status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(
+        url=request.url_for("admin_page"), status_code=status.HTTP_303_SEE_OTHER
+    )
 
 
 @app.post(f"{ADMIN_PATH}/tags")
@@ -775,7 +817,12 @@ def add_tag_action(
     _check_admin_access(request, config)
     keywords = [kw.strip() for kw in (tag_keywords or "").split(",") if kw.strip()]
     try:
-        create_tag(tag_name, tag_category, keywords=keywords or None, is_hidden=tag_is_hidden is not None)
+        create_tag(
+            tag_name,
+            tag_category,
+            keywords=keywords or None,
+            is_hidden=tag_is_hidden is not None,
+        )
     except ValueError as exc:
         return _redirect_to_admin_tags(request, error=str(exc))
     return _redirect_to_admin_tags(request, success="Tag added")
@@ -794,7 +841,13 @@ def update_tag_action(
     _check_admin_access(request, config)
     keyword_list = [kw.strip() for kw in (keywords or "").split(",") if kw.strip()]
     try:
-        update_tag(tag_id, name, category, keywords=keyword_list, is_hidden=is_hidden is not None)
+        update_tag(
+            tag_id,
+            name,
+            category,
+            keywords=keyword_list,
+            is_hidden=is_hidden is not None,
+        )
     except ValueError as exc:
         return _redirect_to_admin_tags(request, error=str(exc))
     return _redirect_to_admin_tags(request, success="Tag updated")
@@ -832,4 +885,6 @@ def admin_delete_event(request: Request, event_id: int) -> RedirectResponse:
     config = get_config()
     _check_admin_access(request, config)
     delete_event(event_id)
-    return RedirectResponse(url=request.url_for("admin_page"), status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(
+        url=request.url_for("admin_page"), status_code=status.HTTP_303_SEE_OTHER
+    )
