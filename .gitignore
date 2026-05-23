@@ -12,3 +12,6 @@ wheels/
 # Runtime data (generated on first startup)
 data/*.db
 data/config.json
+
+# Test coverage
+.coverage
