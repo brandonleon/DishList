@@ -7,15 +7,15 @@
       <strong>System admin</strong>&nbsp;— This control room is only for trusted administrators. Keep this URL close.
     </div>
 
-    {% if tag_success %}
+    {% if flash_success %}
       <div class="alert alert-success alert-dismissible" role="alert">
-        {{ tag_success }}
+        {{ flash_success }}
         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
       </div>
     {% endif %}
-    {% if tag_error %}
+    {% if flash_error %}
       <div class="alert alert-danger alert-dismissible" role="alert">
-        {{ tag_error }}
+        {{ flash_error }}
         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
       </div>
     {% endif %}

@@ -502,8 +502,8 @@ def manage_event(request: Request, token: str) -> HTMLResponse:
     all_dishes = load_dishes_for_event(event.id)
     host_dishes = [d for d in all_dishes if d.is_host_item]
     guest_dishes = [d for d in all_dishes if not d.is_host_item]
-    tag_success = request.query_params.get("tag_success")
-    tag_error = request.query_params.get("tag_error")
+    flash_success = request.query_params.get("flash_success")
+    flash_error = request.query_params.get("flash_error")
     return templates.TemplateResponse(
         request,
         "manage.html",
@@ -513,8 +513,8 @@ def manage_event(request: Request, token: str) -> HTMLResponse:
             "guest_dishes": guest_dishes,
             "tag_groups": load_tag_groups(),
             "tag_categories": get_tag_categories(),
-            "tag_success": tag_success,
-            "tag_error": tag_error,
+            "flash_success": flash_success,
+            "flash_error": flash_error,
         },
     )
 
@@ -693,9 +693,9 @@ def _redirect_to_admin(
     target = str(request.url_for("admin_page"))
     params = {}
     if success:
-        params["tag_success"] = success
+        params["flash_success"] = success
     if error:
-        params["tag_error"] = error
+        params["flash_error"] = error
     if params:
         target = f"{target}?{urlencode(params)}"
     return RedirectResponse(url=target, status_code=status.HTTP_303_SEE_OTHER)
@@ -707,9 +707,9 @@ def _redirect_to_admin_tags(
     target = str(request.url_for("admin_tags_page"))
     params = {}
     if success:
-        params["tag_success"] = success
+        params["flash_success"] = success
     if error:
-        params["tag_error"] = error
+        params["flash_error"] = error
     if params:
         target = f"{target}?{urlencode(params)}"
     return RedirectResponse(url=target, status_code=status.HTTP_303_SEE_OTHER)
@@ -728,8 +728,8 @@ def admin_page(request: Request) -> HTMLResponse:
             "admin_path": ADMIN_PATH,
             "tag_counts": get_tag_counts(),
             "admin_tags_url": str(request.url_for("admin_tags_page")),
-            "tag_success": request.query_params.get("tag_success"),
-            "tag_error": request.query_params.get("tag_error"),
+            "flash_success": request.query_params.get("flash_success"),
+            "flash_error": request.query_params.get("flash_error"),
         },
     )
 
@@ -747,8 +747,8 @@ def reload_config(request: Request) -> RedirectResponse:
 def admin_tags_page(request: Request) -> HTMLResponse:
     config = get_config()
     _check_admin_access(request, config)
-    tag_success = request.query_params.get("tag_success")
-    tag_error = request.query_params.get("tag_error")
+    flash_success = request.query_params.get("flash_success")
+    flash_error = request.query_params.get("flash_error")
     return templates.TemplateResponse(
         request,
         "admin_tags.html",
@@ -757,8 +757,8 @@ def admin_tags_page(request: Request) -> HTMLResponse:
             "tag_groups": load_tag_groups(),
             "tag_categories": get_tag_categories(),
             "tag_counts": get_tag_counts(),
-            "tag_success": tag_success,
-            "tag_error": tag_error,
+            "flash_success": flash_success,
+            "flash_error": flash_error,
         },
     )
 
