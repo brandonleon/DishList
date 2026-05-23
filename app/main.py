@@ -47,6 +47,8 @@ from .storage import (
     get_event_by_slug,
     get_tag_categories,
     get_tags_by_ids,
+    count_dishes,
+    count_events,
     init_db,
     load_all_dishes,
     load_dishes_for_event,
@@ -357,8 +359,8 @@ def metrics(request: Request) -> Response:
     _check_metrics_access(request, config)
 
     def _refresh() -> None:
-        EVENTS_TOTAL.set(len(load_events()))
-        DISHES_TOTAL.set(len(load_all_dishes()))
+        EVENTS_TOTAL.set(count_events())
+        DISHES_TOTAL.set(count_dishes())
 
     return render_metrics(refresh_gauges=_refresh)
 
