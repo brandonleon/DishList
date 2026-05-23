@@ -7,6 +7,19 @@
       <strong>System admin</strong>&nbsp;— This control room is only for trusted administrators. Keep this URL close.
     </div>
 
+    {% if tag_success %}
+      <div class="alert alert-success alert-dismissible" role="alert">
+        {{ tag_success }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+      </div>
+    {% endif %}
+    {% if tag_error %}
+      <div class="alert alert-danger alert-dismissible" role="alert">
+        {{ tag_error }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+      </div>
+    {% endif %}
+
     <!-- ── All events ──────────────────────────────────────────── -->
     <div class="card shadow-sm mb-4">
       <div class="card-body p-4">
@@ -83,10 +96,44 @@
 {% endfor %}</textarea>
             <div class="form-text">IP addresses or CIDR ranges (e.g. 192.168.1.0/24), one per line.</div>
           </div>
+          <div class="mb-4">
+            <label for="metrics_networks_input" class="form-label">
+              Allowed metrics networks
+              {% if config.metrics_enabled %}
+                <span class="badge bg-success-subtle text-success ms-1">/metrics enabled</span>
+              {% else %}
+                <span class="badge bg-secondary-subtle text-secondary ms-1">/metrics disabled</span>
+              {% endif %}
+            </label>
+            <textarea class="form-control font-monospace" id="metrics_networks_input" name="metrics_networks_input" rows="3">{% for block in config.metrics_networks %}{{ block }}
+{% endfor %}</textarea>
+            <div class="form-text">
+              IP addresses or CIDR ranges allowed to scrape <code>/metrics</code>.
+              Toggle the endpoint with <code>dishlist admin metrics enable</code> / <code>disable</code>.
+            </div>
+          </div>
           <div class="d-flex justify-content-end">
             <button type="submit" class="btn btn-danger">Save global settings</button>
           </div>
         </form>
+      </div>
+    </div>
+
+    <!-- ── Reload config ────────────────────────────────────── -->
+    <div class="card shadow-sm mb-4">
+      <div class="card-body p-4">
+        <div class="d-flex justify-content-between align-items-center">
+          <div>
+            <h2 class="h5 mb-1 fw-semibold">Reload configuration</h2>
+            <p class="text-muted small mb-0">
+              Apply changes made via the CLI without restarting the server.
+              Equivalent to <code>dishlist admin reload</code>.
+            </p>
+          </div>
+          <form method="post" action="{{ url_for('reload_config') }}">
+            <button type="submit" class="btn btn-outline-secondary btn-sm">Reload config</button>
+          </form>
+        </div>
       </div>
     </div>
 

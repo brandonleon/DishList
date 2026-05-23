@@ -158,3 +158,113 @@ class TestTagKeywordsInAddForm:
         html = client.get("/").text
         assert "tag-picker.js?v=" in html
         assert "styles.css?v=" in html
+
+
+# ── Admin reload endpoint ─────────────────────────────────────────────────────
+
+class TestAdminReloadEndpoint:
+    def _enable_admin(self, app_state):
+        from app.config import AppConfig, save_config
+        from app.main import app
+
+        cfg = AppConfig(web_admin_enabled=True, admin_networks=["127.0.0.1/32"])
+        save_config(cfg)
+        app.state.config = cfg
+
+    def test_reload_disabled_admin_returns_404(self, client):
+        from app.config import AppConfig
+        from app.main import app
+
+        app.state.config = AppConfig(web_admin_enabled=False, admin_networks=["127.0.0.1/32"])
+        assert client.post("/pantry-admin/reload").status_code == 404
+
+    def test_reload_blocked_ip_returns_403(self, client):
+        from app.config import AppConfig, save_config
+        from app.main import app
+
+        cfg = AppConfig(web_admin_enabled=True, admin_networks=["10.0.0.0/24"])
+        save_config(cfg)
+        app.state.config = cfg
+
+        assert client.post("/pantry-admin/reload").status_code == 403
+
+    def test_reload_refreshes_config_and_redirects(self, client):
+        from app.config import AppConfig, save_config
+        from app.main import app
+
+        cfg = AppConfig(web_admin_enabled=True, admin_networks=["127.0.0.1/32"])
+        save_config(cfg)
+        app.state.config = cfg
+
+        # Change config on disk without touching app.state
+        updated = AppConfig(
+            web_admin_enabled=True,
+            admin_networks=["127.0.0.1/32"],
+            metrics_enabled=True,
+            metrics_networks=["10.0.0.0/8"],
+        )
+        save_config(updated)
+
+        resp = client.post("/pantry-admin/reload", follow_redirects=False)
+        assert resp.status_code == 303
+        assert "tag_success" in resp.headers["location"]
+
+        # app.state should now reflect the updated config
+        assert app.state.config.metrics_enabled is True
+        assert "10.0.0.0/8" in app.state.config.metrics_networks
+
+
+# ── Prometheus metrics endpoint ───────────────────────────────────────────────
+
+class TestMetricsEndpoint:
+    def test_metrics_disabled_by_default_returns_404(self, client):
+        assert client.get("/metrics").status_code == 404
+
+    def test_metrics_enabled_allowed_ip_returns_prometheus(self, client):
+        from app.config import AppConfig, save_config
+        from app.main import app
+
+        cfg = AppConfig(metrics_enabled=True, metrics_networks=["127.0.0.1/32"])
+        save_config(cfg)
+        app.state.config = cfg
+
+        resp = client.get("/metrics")
+        assert resp.status_code == 200
+        assert resp.headers["content-type"].startswith("text/plain")
+        body = resp.text
+        assert "dishlist_http_requests_total" in body
+        assert "dishlist_events_total" in body
+
+    def test_metrics_blocked_ip_returns_403(self, client):
+        from app.config import AppConfig, save_config
+        from app.main import app
+
+        cfg = AppConfig(metrics_enabled=True, metrics_networks=["10.0.0.0/24"])
+        save_config(cfg)
+        app.state.config = cfg
+
+        assert client.get("/metrics").status_code == 403
+
+    def test_metrics_disable_returns_404_even_with_allowlist(self, client):
+        from app.config import AppConfig, save_config
+        from app.main import app
+
+        cfg = AppConfig(metrics_enabled=False, metrics_networks=["127.0.0.1/32"])
+        save_config(cfg)
+        app.state.config = cfg
+
+        assert client.get("/metrics").status_code == 404
+
+    def test_metrics_record_requests(self, client):
+        from app.config import AppConfig, save_config
+        from app.main import app
+
+        cfg = AppConfig(metrics_enabled=True, metrics_networks=["127.0.0.1/32"])
+        save_config(cfg)
+        app.state.config = cfg
+
+        client.get("/")
+        body = client.get("/metrics").text
+        # The landing route should have been recorded with status 200.
+        assert 'path="/"' in body
+        assert 'status="200"' in body
