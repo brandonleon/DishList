@@ -123,6 +123,7 @@ def admin_reload() -> None:
     Has no effect if the server is not running — start it with
     ``dishlist serve``.
     """
+    import os
     import signal as _signal
 
     from app.config import DATA_DIR

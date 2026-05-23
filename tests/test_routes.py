@@ -1,9 +1,5 @@
 """Integration tests for the FastAPI routes via TestClient."""
 
-import pytest
-
-from app.storage import create_event, load_tags, get_tag_counts
-
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -65,7 +61,6 @@ class TestPublicRoutes:
 class TestEventRoutes:
     def test_event_home_200(self, client):
         token = _create_event(client)
-        slug = client.get(f"/manage/{token}", follow_redirects=True).url.path
         # Derive slug from manage page
         from app.storage import get_event_by_management_token
 
@@ -177,7 +172,8 @@ class TestTagKeywordsInAddForm:
 
     def test_hidden_tag_keywords_included(self, client):
         """Hidden tags' keywords must be in TAG_KEYWORDS for auto-detection."""
-        import json, re
+        import json
+        import re
 
         token = _create_event(client)
         from app.storage import get_event_by_management_token
