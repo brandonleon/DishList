@@ -350,6 +350,22 @@ def favicon() -> FileResponse:
     return FileResponse(STATIC_DIR / "favicon.ico", media_type="image/x-icon")
 
 
+@app.get("/health", include_in_schema=False)
+def health() -> Response:
+    try:
+        count_events()
+        db_status = "ok"
+    except Exception:
+        db_status = "error"
+
+    overall = "ok" if db_status == "ok" else "degraded"
+    status_code = 200 if overall == "ok" else 503
+    body = json.dumps({"status": overall, "version": APP_VERSION, "db": db_status})
+    return Response(
+        content=body, media_type="application/json", status_code=status_code
+    )
+
+
 @app.get(METRICS_PATH, include_in_schema=False)
 def metrics(request: Request) -> Response:
     config = get_config()

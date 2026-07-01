@@ -513,6 +513,12 @@ def get_event_by_management_token(token: str) -> Optional[Event]:
     return _row_to_event(row) if row else None
 
 
+def get_event_by_id(event_id: int) -> Optional[Event]:
+    with _get_connection() as conn:
+        row = conn.execute("SELECT * FROM events WHERE id = ?", (event_id,)).fetchone()
+    return _row_to_event(row) if row else None
+
+
 def load_events() -> List[Event]:
     with _get_connection() as conn:
         rows = conn.execute(

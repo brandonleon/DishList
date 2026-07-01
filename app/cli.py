@@ -17,6 +17,7 @@ Usage:
     dishlist admin tags remove <id>       Remove a dietary tag by ID
     dishlist admin tags reset             Reset tag library to defaults
     dishlist admin events list            List all events
+    dishlist admin events token <id>      Print the management URL for an event
     dishlist admin events delete <id>     Delete an event and all its dishes
     dishlist admin metrics status         Show /metrics endpoint status
     dishlist admin metrics enable         Enable the Prometheus /metrics endpoint
@@ -475,6 +476,27 @@ def events_list() -> None:
         click.echo(
             f"  {event.id:>3}  {event.name:<32}  {date_str:<12}  {status}  {len(dishes)}"
         )
+
+
+@events.command("token")
+@click.argument("event_id", type=int)
+def events_token(event_id: int) -> None:
+    """Print the management URL path for an event (for token recovery)."""
+    from app.storage import get_event_by_id
+
+    event = get_event_by_id(event_id)
+    if not event:
+        _err(f"No event found with ID {event_id}.")
+        sys.exit(1)
+
+    click.echo(f"  Event:  {event.name}")
+    click.echo(f"  Path:   /manage/{event.management_token}")
+    click.echo(
+        click.style(
+            "  Prepend your server's base URL to get the full management link.",
+            dim=True,
+        )
+    )
 
 
 @events.command("delete")
