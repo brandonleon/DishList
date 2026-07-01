@@ -16,8 +16,10 @@ Usage:
     dishlist admin tags remove <id>       Remove a dietary tag by ID
     dishlist admin tags reset             Reset tag library to defaults
     dishlist admin events list            List all events
+    dishlist admin events token <id>      Print the management URL for an event
     dishlist admin events delete <id>     Delete an event and all its dishes
 """
+
 from __future__ import annotations
 
 import ipaddress
@@ -29,13 +31,16 @@ import click
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
 
+
 def _load():
     from app.config import load_config
+
     return load_config()
 
 
 def _save(config):
     from app.config import save_config
+
     save_config(config)
 
 
@@ -60,12 +65,14 @@ def _validate_network(value: str) -> str:
 
 # ── Root ──────────────────────────────────────────────────────────────────────
 
+
 @click.group()
 def cli() -> None:
     """DishList — potluck planner management CLI."""
 
 
 # ── serve ─────────────────────────────────────────────────────────────────────
+
 
 @cli.command()
 @click.option("--host", default="0.0.0.0", show_default=True, help="Bind address.")
@@ -86,17 +93,30 @@ def serve(host: str, port: int, reload: Optional[bool]) -> None:
 
     click.echo(f"Starting DishList on http://{host}:{port}")
     try:
-        uvicorn.run("app.main:app", host=host, port=port, reload=reload,
-                    proxy_headers=True, forwarded_allow_ips="*")
+        uvicorn.run(
+            "app.main:app",
+            host=host,
+            port=port,
+            reload=reload,
+            proxy_headers=True,
+            forwarded_allow_ips="*",
+        )
     except PermissionError:
         if not reload:
             raise
         click.echo("Live reload blocked; starting without reload.", err=True)
-        uvicorn.run("app.main:app", host=host, port=port, reload=False,
-                    proxy_headers=True, forwarded_allow_ips="*")
+        uvicorn.run(
+            "app.main:app",
+            host=host,
+            port=port,
+            reload=False,
+            proxy_headers=True,
+            forwarded_allow_ips="*",
+        )
 
 
 # ── admin ─────────────────────────────────────────────────────────────────────
+
 
 @cli.group()
 def admin() -> None:
@@ -123,8 +143,7 @@ def admin_status() -> None:
     click.echo(f"  Web admin    {web_label}")
     if not config.web_admin_enabled:
         click.echo(
-            click.style("               Run: ", dim=True)
-            + "dishlist admin web enable"
+            click.style("               Run: ", dim=True) + "dishlist admin web enable"
         )
     click.echo(f"  Events       {len(events)}")
     click.echo()
@@ -148,6 +167,7 @@ def admin_status() -> None:
 
 
 # ── admin web ─────────────────────────────────────────────────────────────────
+
 
 @admin.group()
 def web() -> None:
@@ -197,6 +217,7 @@ def web_disable() -> None:
 
 # ── admin networks ────────────────────────────────────────────────────────────
 
+
 @admin.group()
 def networks() -> None:
     """Manage IP addresses and CIDR ranges allowed to access web admin."""
@@ -243,6 +264,7 @@ def networks_remove(network: str) -> None:
 
 # ── admin dish-types ──────────────────────────────────────────────────────────
 
+
 @admin.group("dish-types")
 def dish_types() -> None:
     """Manage the default dish categories seeded into new events."""
@@ -284,6 +306,7 @@ def dish_types_remove(name: str) -> None:
 
 
 # ── admin tags ────────────────────────────────────────────────────────────────
+
 
 @admin.group()
 def tags() -> None:
@@ -349,6 +372,7 @@ def tags_reset() -> None:
 
 # ── admin events ──────────────────────────────────────────────────────────────
 
+
 @admin.group()
 def events() -> None:
     """View and manage events."""
@@ -369,11 +393,36 @@ def events_list() -> None:
     click.echo("  " + "─" * (len(header) - 2))
     for event in event_list:
         dishes = load_dishes_for_event(event.id)
-        status = click.style("Open  ", fg="green") if event.is_active else click.style("Closed", fg="yellow")
+        status = (
+            click.style("Open  ", fg="green")
+            if event.is_active
+            else click.style("Closed", fg="yellow")
+        )
         date_str = str(event.event_date) if event.event_date else "—"
         click.echo(
             f"  {event.id:>3}  {event.name:<32}  {date_str:<12}  {status}  {len(dishes)}"
         )
+
+
+@events.command("token")
+@click.argument("event_id", type=int)
+def events_token(event_id: int) -> None:
+    """Print the management URL path for an event (for token recovery)."""
+    from app.storage import get_event_by_id
+
+    event = get_event_by_id(event_id)
+    if not event:
+        _err(f"No event found with ID {event_id}.")
+        sys.exit(1)
+
+    click.echo(f"  Event:  {event.name}")
+    click.echo(f"  Path:   /manage/{event.management_token}")
+    click.echo(
+        click.style(
+            "  Prepend your server's base URL to get the full management link.",
+            dim=True,
+        )
+    )
 
 
 @events.command("delete")

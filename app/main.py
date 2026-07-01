@@ -12,7 +12,7 @@ from importlib import metadata
 import tomllib
 
 from fastapi import FastAPI, Form, HTTPException, Request, status
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -30,6 +30,7 @@ from .storage import (
     reset_tags_to_defaults,
     toggle_tag_visibility,
     update_tag,
+    count_events,
     get_event_by_management_token,
     get_event_by_slug,
     get_tag_categories,
@@ -120,7 +121,9 @@ def _filter_dishes(dishes: List[DishEntry], query: str) -> List[DishEntry]:
     filtered: List[DishEntry] = []
     for dish in dishes:
         searchable = [
-            dish.dish_name, dish.contributor, dish.dish_type,
+            dish.dish_name,
+            dish.contributor,
+            dish.dish_type,
             dish.notes or "",
         ]
         if any(search in chunk.lower() for chunk in searchable if chunk):
@@ -201,15 +204,20 @@ def create_event_submit(
     host_item_types: List[str] = Form(default=[]),
     host_item_notes: List[str] = Form(default=[]),
 ) -> RedirectResponse:
-    dish_types = [line.strip() for line in dish_types_input.splitlines() if line.strip()]
+    dish_types = [
+        line.strip() for line in dish_types_input.splitlines() if line.strip()
+    ]
     if not dish_types:
-        raise HTTPException(status_code=400, detail="At least one dish type is required")
+        raise HTTPException(
+            status_code=400, detail="At least one dish type is required"
+        )
 
     # Validate event_date if provided
     clean_date: Optional[str] = None
     if event_date and event_date.strip():
         try:
             from datetime import date
+
             date.fromisoformat(event_date.strip())
             clean_date = event_date.strip()
         except ValueError:
@@ -217,7 +225,9 @@ def create_event_submit(
 
     event = create_event(
         name=name,
-        description=description.strip() if description and description.strip() else None,
+        description=description.strip()
+        if description and description.strip()
+        else None,
         event_date=clean_date,
         host_name=host_name.strip() if host_name and host_name.strip() else "The House",
         dish_types=dish_types,
@@ -225,7 +235,9 @@ def create_event_submit(
     )
 
     # Add host contributions
-    for item_name, item_type, item_notes in zip(host_item_names, host_item_types, host_item_notes):
+    for item_name, item_type, item_notes in zip(
+        host_item_names, host_item_types, host_item_notes
+    ):
         item_name = item_name.strip()
         if not item_name:
             continue
@@ -253,6 +265,22 @@ def favicon() -> FileResponse:
     return FileResponse(STATIC_DIR / "favicon.ico", media_type="image/x-icon")
 
 
+@app.get("/health", include_in_schema=False)
+def health() -> Response:
+    try:
+        count_events()
+        db_status = "ok"
+    except Exception:
+        db_status = "error"
+
+    overall = "ok" if db_status == "ok" else "degraded"
+    status_code = 200 if overall == "ok" else 503
+    body = json.dumps({"status": overall, "version": APP_VERSION, "db": db_status})
+    return Response(
+        content=body, media_type="application/json", status_code=status_code
+    )
+
+
 # ── Event public routes ────────────────────────────────────────────────────────
 
 
@@ -267,7 +295,9 @@ def event_home(request: Request, slug: str) -> HTMLResponse:
     all_dishes = load_dishes_for_event(event.id)
     host_dishes = [d for d in all_dishes if d.is_host_item]
     guest_dishes = [d for d in all_dishes if not d.is_host_item]
-    filtered_guests = _filter_dishes(guest_dishes, search_query) if search_query else guest_dishes
+    filtered_guests = (
+        _filter_dishes(guest_dishes, search_query) if search_query else guest_dishes
+    )
 
     return templates.TemplateResponse(
         request,
@@ -288,14 +318,13 @@ def event_home(request: Request, slug: str) -> HTMLResponse:
 def event_add_form(request: Request, slug: str) -> HTMLResponse:
     event = _get_event_by_slug_or_404(slug)
     if not event.is_active:
-        raise HTTPException(status_code=403, detail="This event is no longer accepting submissions")
+        raise HTTPException(
+            status_code=403, detail="This event is no longer accepting submissions"
+        )
     tag_groups = load_tag_groups()
     # Build keyword map for client-side auto-detection: {tagId: ["kw1", "kw2"]}
     tag_kw_map = {
-        tag.id: tag.keywords
-        for _, tags in tag_groups
-        for tag in tags
-        if tag.keywords
+        tag.id: tag.keywords for _, tags in tag_groups for tag in tags if tag.keywords
     }
     hidden_count = sum(1 for _, tags in tag_groups for tag in tags if tag.is_hidden)
     return templates.TemplateResponse(
@@ -323,7 +352,9 @@ def event_add_submission(
 ) -> RedirectResponse:
     event = _get_event_by_slug_or_404(slug)
     if not event.is_active:
-        raise HTTPException(status_code=403, detail="This event is no longer accepting submissions")
+        raise HTTPException(
+            status_code=403, detail="This event is no longer accepting submissions"
+        )
     if dish_type not in event.dish_types:
         raise HTTPException(status_code=400, detail="Unknown dish type")
 
@@ -350,7 +381,9 @@ def event_add_submission(
 
 
 @app.get("/e/{slug}/table/rows", response_class=HTMLResponse)
-def event_table_rows_partial(request: Request, slug: str, search: str = "") -> HTMLResponse:
+def event_table_rows_partial(
+    request: Request, slug: str, search: str = ""
+) -> HTMLResponse:
     event = _get_event_by_slug_or_404(slug)
     all_dishes = load_dishes_for_event(event.id)
     guest_dishes = [d for d in all_dishes if not d.is_host_item]
@@ -361,7 +394,9 @@ def event_table_rows_partial(request: Request, slug: str, search: str = "") -> H
 
 
 @app.get("/e/{slug}/cards/grid", response_class=HTMLResponse)
-def event_card_grid_partial(request: Request, slug: str, search: str = "") -> HTMLResponse:
+def event_card_grid_partial(
+    request: Request, slug: str, search: str = ""
+) -> HTMLResponse:
     event = _get_event_by_slug_or_404(slug)
     all_dishes = load_dishes_for_event(event.id)
     guest_dishes = [d for d in all_dishes if not d.is_host_item]
@@ -409,14 +444,19 @@ def update_event_settings(
     is_active: Optional[str] = Form(None),
 ) -> RedirectResponse:
     event = _get_event_by_token_or_404(token)
-    dish_types = [line.strip() for line in dish_types_input.splitlines() if line.strip()]
+    dish_types = [
+        line.strip() for line in dish_types_input.splitlines() if line.strip()
+    ]
     if not dish_types:
-        raise HTTPException(status_code=400, detail="At least one dish type is required")
+        raise HTTPException(
+            status_code=400, detail="At least one dish type is required"
+        )
 
     clean_date: Optional[str] = None
     if event_date and event_date.strip():
         try:
             from datetime import date
+
             date.fromisoformat(event_date.strip())
             clean_date = event_date.strip()
         except ValueError:
@@ -425,7 +465,9 @@ def update_event_settings(
     update_event(
         event_id=event.id,
         name=name,
-        description=description.strip() if description and description.strip() else None,
+        description=description.strip()
+        if description and description.strip()
+        else None,
         event_date=clean_date,
         host_name=host_name.strip() if host_name and host_name.strip() else "The House",
         dish_types=dish_types,
@@ -485,10 +527,7 @@ def manage_edit_dish_form(request: Request, token: str, dish_id: int) -> HTMLRes
         raise HTTPException(status_code=404, detail="Dish not found")
     tag_groups = load_tag_groups()
     tag_kw_map = {
-        tag.id: tag.keywords
-        for _, tags in tag_groups
-        for tag in tags
-        if tag.keywords
+        tag.id: tag.keywords for _, tags in tag_groups for tag in tags if tag.keywords
     }
     hidden_count = sum(1 for _, tags in tag_groups for tag in tags if tag.is_hidden)
     return templates.TemplateResponse(
@@ -563,7 +602,9 @@ def manage_delete_dish(request: Request, token: str, dish_id: int) -> RedirectRe
 # ── System admin routes (IP-gated) ─────────────────────────────────────────────
 
 
-def _redirect_to_admin(request: Request, success: Optional[str] = None, error: Optional[str] = None) -> RedirectResponse:
+def _redirect_to_admin(
+    request: Request, success: Optional[str] = None, error: Optional[str] = None
+) -> RedirectResponse:
     target = str(request.url_for("admin_page"))
     params = {}
     if success:
@@ -575,7 +616,9 @@ def _redirect_to_admin(request: Request, success: Optional[str] = None, error: O
     return RedirectResponse(url=target, status_code=status.HTTP_303_SEE_OTHER)
 
 
-def _redirect_to_admin_tags(request: Request, success: Optional[str] = None, error: Optional[str] = None) -> RedirectResponse:
+def _redirect_to_admin_tags(
+    request: Request, success: Optional[str] = None, error: Optional[str] = None
+) -> RedirectResponse:
     target = str(request.url_for("admin_tags_page"))
     params = {}
     if success:
@@ -633,10 +676,16 @@ def update_admin_settings(
     config = get_config()
     _check_admin_access(request, config)
 
-    dish_types = [line.strip() for line in dish_types_input.splitlines() if line.strip()]
-    networks = [line.strip() for line in admin_networks_input.splitlines() if line.strip()]
+    dish_types = [
+        line.strip() for line in dish_types_input.splitlines() if line.strip()
+    ]
+    networks = [
+        line.strip() for line in admin_networks_input.splitlines() if line.strip()
+    ]
     if not dish_types:
-        raise HTTPException(status_code=400, detail="At least one dish type is required")
+        raise HTTPException(
+            status_code=400, detail="At least one dish type is required"
+        )
     if not networks:
         raise HTTPException(status_code=400, detail="At least one network is required")
 
@@ -647,7 +696,9 @@ def update_admin_settings(
     )
     save_config(new_config)
     app.state.config = new_config
-    return RedirectResponse(url=request.url_for("admin_page"), status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(
+        url=request.url_for("admin_page"), status_code=status.HTTP_303_SEE_OTHER
+    )
 
 
 @app.post(f"{ADMIN_PATH}/tags")
@@ -660,9 +711,16 @@ def add_tag_action(
 ) -> RedirectResponse:
     config = get_config()
     _check_admin_access(request, config)
-    keywords: List[str] = [kw.strip() for kw in (tag_keywords or "").split(",") if kw.strip()]
+    keywords: List[str] = [
+        kw.strip() for kw in (tag_keywords or "").split(",") if kw.strip()
+    ]
     try:
-        create_tag(tag_name, tag_category, keywords=keywords or None, is_hidden=tag_is_hidden is not None)
+        create_tag(
+            tag_name,
+            tag_category,
+            keywords=keywords or None,
+            is_hidden=tag_is_hidden is not None,
+        )
     except ValueError as exc:
         return _redirect_to_admin_tags(request, error=str(exc))
     return _redirect_to_admin_tags(request, success="Tag added")
@@ -687,9 +745,17 @@ def update_tag_action(
 ) -> RedirectResponse:
     config = get_config()
     _check_admin_access(request, config)
-    keyword_list: List[str] = [kw.strip() for kw in (keywords or "").split(",") if kw.strip()]
+    keyword_list: List[str] = [
+        kw.strip() for kw in (keywords or "").split(",") if kw.strip()
+    ]
     try:
-        update_tag(tag_id, name, category, keywords=keyword_list, is_hidden=is_hidden is not None)
+        update_tag(
+            tag_id,
+            name,
+            category,
+            keywords=keyword_list,
+            is_hidden=is_hidden is not None,
+        )
     except ValueError as exc:
         return _redirect_to_admin_tags(request, error=str(exc))
     return _redirect_to_admin_tags(request, success="Tag updated")
@@ -719,4 +785,6 @@ def admin_delete_event(request: Request, event_id: int) -> RedirectResponse:
     config = get_config()
     _check_admin_access(request, config)
     delete_event(event_id)
-    return RedirectResponse(url=request.url_for("admin_page"), status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(
+        url=request.url_for("admin_page"), status_code=status.HTTP_303_SEE_OTHER
+    )

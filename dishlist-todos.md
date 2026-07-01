@@ -18,30 +18,30 @@ Remove the dual-write shim that keeps `data/config.json` in sync with SQLite `co
 
 ---
 
-## #35: Management token recovery — add self-service or CLI guidance
+## #35: Management token recovery — add self-service or CLI guidance [DONE]
 **Time:** 45m–1.5h | **Priority:** 2 (UX gap)
 
 If a Host loses their Management Token, there's no recovery flow. Implement Option A (CLI) first.
 
 ### Option A — Improve CLI recovery UX (45m):
-- [ ] Add `dishlist admin events token <id>` subcommand
-- [ ] Prints just the management URL for a specific event
-- [ ] Makes recovery less error-prone than reading full events list
+- [x] Add `dishlist admin events token <id>` subcommand
+- [x] Prints just the management URL for a specific event
+- [x] Makes recovery less error-prone than reading full events list
 
 **Reference:** ADR-0004
 
 ---
 
-## #30: Add health check endpoint
+## #30: Add health check endpoint [DONE]
 **Time:** 30m | **Priority:** 3 (nice-to-have)
 
 Create `/health` endpoint for container orchestration.
 
 ### Work:
-- [ ] Create `/health` route
-- [ ] Returns 200 + JSON status
-- [ ] Checks database connectivity
-- [ ] Requires no authentication
+- [x] Create `/health` route
+- [x] Returns 200 + JSON status
+- [x] Checks database connectivity
+- [x] Requires no authentication
 
 **Milestone:** v1.0.0 - Stable Release
 

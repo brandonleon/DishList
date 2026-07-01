@@ -92,40 +92,120 @@ DEFAULT_HIDDEN_TAG_GROUPS: Dict[str, List[str]] = {
         "Reheat: air fryer",
     ],
 }
-_CATEGORY_ORDER_LOOKUP = {category: idx for idx, category in enumerate(TAG_CATEGORY_ORDER)}
+_CATEGORY_ORDER_LOOKUP = {
+    category: idx for idx, category in enumerate(TAG_CATEGORY_ORDER)
+}
 
 # Default auto-detect keywords seeded for each built-in tag.
 # Keys must match tag names in DEFAULT_TAG_GROUPS exactly.
 DEFAULT_TAG_KEYWORDS: Dict[str, List[str]] = {
     # ── Allergen warnings (visible) ────────────────────────────────────────────
     "Contains peanuts": ["peanut", "groundnut"],
-    "Contains tree nuts": ["nut", "nuts", "almond", "cashew", "walnut", "pecan",
-                             "hazelnut", "pistachio", "macadamia"],
-    "Contains dairy": ["dairy", "milk", "cream", "cheese", "butter",
-                        "yogurt", "yoghurt", "whey"],
+    "Contains tree nuts": [
+        "nut",
+        "nuts",
+        "almond",
+        "cashew",
+        "walnut",
+        "pecan",
+        "hazelnut",
+        "pistachio",
+        "macadamia",
+    ],
+    "Contains dairy": [
+        "dairy",
+        "milk",
+        "cream",
+        "cheese",
+        "butter",
+        "yogurt",
+        "yoghurt",
+        "whey",
+    ],
     "Contains eggs": ["egg", "eggs"],
     "Contains gluten / wheat": ["gluten", "wheat", "flour"],
     "Contains soy": ["soy", "tofu", "edamame"],
     "Contains sesame": ["sesame", "tahini"],
-    "Contains shellfish": ["shellfish", "shrimp", "prawn", "crab", "lobster",
-                             "scallop", "mussel", "oyster", "clam"],
-    "Contains fish": ["fish", "salmon", "tuna", "cod", "anchovy", "anchovies",
-                       "herring", "tilapia", "trout"],
-    "Contains coconut": ["coconut", "coconut milk", "coconut cream",
-                          "coconut oil", "desiccated coconut", "shredded coconut"],
-    "Contains corn": ["corn", "cornstarch", "cornmeal", "polenta", "grits",
-                       "corn syrup", "sweet corn"],
+    "Contains shellfish": [
+        "shellfish",
+        "shrimp",
+        "prawn",
+        "crab",
+        "lobster",
+        "scallop",
+        "mussel",
+        "oyster",
+        "clam",
+    ],
+    "Contains fish": [
+        "fish",
+        "salmon",
+        "tuna",
+        "cod",
+        "anchovy",
+        "anchovies",
+        "herring",
+        "tilapia",
+        "trout",
+    ],
+    "Contains coconut": [
+        "coconut",
+        "coconut milk",
+        "coconut cream",
+        "coconut oil",
+        "desiccated coconut",
+        "shredded coconut",
+    ],
+    "Contains corn": [
+        "corn",
+        "cornstarch",
+        "cornmeal",
+        "polenta",
+        "grits",
+        "corn syrup",
+        "sweet corn",
+    ],
     "Contains mustard": ["mustard", "dijon", "whole grain mustard"],
     # ── Content & serving (visible) ────────────────────────────────────────────
-    "Contains alcohol": ["alcohol", "wine", "beer", "whiskey", "whisky",
-                          "vodka", "rum", "brandy", "bourbon", "liqueur"],
-    "Contains pork": ["pork", "bacon", "ham", "prosciutto", "pancetta",
-                       "chorizo", "salami", "lard"],
-    "Spicy": ["spicy", "chili", "chilli", "jalape\u00f1o", "jalapeno",
-               "sriracha", "cayenne", "habanero"],
+    "Contains alcohol": [
+        "alcohol",
+        "wine",
+        "beer",
+        "whiskey",
+        "whisky",
+        "vodka",
+        "rum",
+        "brandy",
+        "bourbon",
+        "liqueur",
+    ],
+    "Contains pork": [
+        "pork",
+        "bacon",
+        "ham",
+        "prosciutto",
+        "pancetta",
+        "chorizo",
+        "salami",
+        "lard",
+    ],
+    "Spicy": [
+        "spicy",
+        "chili",
+        "chilli",
+        "jalape\u00f1o",
+        "jalapeno",
+        "sriracha",
+        "cayenne",
+        "habanero",
+    ],
     "Kid-friendly": ["for kids", "for children"],
     "Keep chilled": ["chilled", "refrigerate", "refrigerated"],
-    "Prepared in a GF kitchen": ["gf kitchen", "gluten-free kitchen", "gluten free kitchen"],
+    "Prepared in a GF kitchen": [
+        "gf kitchen",
+        "gluten-free kitchen",
+        "gluten free kitchen",
+    ],
     "Reheat: stovetop": ["stovetop", "stove top", "hob"],
     "Reheat: oven": ["oven", "bake"],
     "Reheat: microwave": ["microwave"],
@@ -349,7 +429,9 @@ def _make_unique_slug(conn: sqlite3.Connection, name: str, use_random: bool) -> 
 def _make_unique_token(conn: sqlite3.Connection) -> str:
     for _ in range(20):
         token = _generate_management_token()
-        if not conn.execute("SELECT id FROM events WHERE management_token = ?", (token,)).fetchone():
+        if not conn.execute(
+            "SELECT id FROM events WHERE management_token = ?", (token,)
+        ).fetchone():
             return token
     raise ValueError("Could not generate a unique management token — please try again")
 
@@ -375,7 +457,16 @@ def create_event(
             INSERT INTO events (slug, management_token, name, description, event_date, host_name, dish_types, is_active, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
             """,
-            (slug, token, name.strip(), description or None, event_date or None, safe_host, json.dumps(dish_types), now),
+            (
+                slug,
+                token,
+                name.strip(),
+                description or None,
+                event_date or None,
+                safe_host,
+                json.dumps(dish_types),
+                now,
+            ),
         )
         event_id = cursor.lastrowid
         assert event_id is not None
@@ -409,7 +500,15 @@ def get_event_by_slug(slug: str) -> Optional[Event]:
 
 def get_event_by_management_token(token: str) -> Optional[Event]:
     with _get_connection() as conn:
-        row = conn.execute("SELECT * FROM events WHERE management_token = ?", (token,)).fetchone()
+        row = conn.execute(
+            "SELECT * FROM events WHERE management_token = ?", (token,)
+        ).fetchone()
+    return _row_to_event(row) if row else None
+
+
+def get_event_by_id(event_id: int) -> Optional[Event]:
+    with _get_connection() as conn:
+        row = conn.execute("SELECT * FROM events WHERE id = ?", (event_id,)).fetchone()
     return _row_to_event(row) if row else None
 
 
@@ -419,6 +518,11 @@ def load_events() -> List[Event]:
             "SELECT * FROM events ORDER BY datetime(created_at) DESC, id DESC"
         ).fetchall()
     return [_row_to_event(r) for r in rows]
+
+
+def count_events() -> int:
+    with _get_connection() as conn:
+        return conn.execute("SELECT COUNT(*) AS n FROM events").fetchone()["n"]
 
 
 def update_event(
@@ -481,7 +585,9 @@ def _tag_sort_key(tag: Tag) -> Tuple[int, int, str]:
     return (_category_sort_index(tag.category), tag.position, tag.name.lower())
 
 
-def _load_tags_for_dishes(conn: sqlite3.Connection, dish_ids: Sequence[int]) -> Dict[int, List[Tag]]:
+def _load_tags_for_dishes(
+    conn: sqlite3.Connection, dish_ids: Sequence[int]
+) -> Dict[int, List[Tag]]:
     mapping: Dict[int, List[Tag]] = {}
     if not dish_ids:
         return mapping
@@ -498,12 +604,19 @@ def _load_tags_for_dishes(conn: sqlite3.Connection, dish_ids: Sequence[int]) -> 
     ).fetchall()
     for row in rows:
         mapping.setdefault(row["dish_id"], []).append(
-            Tag(id=row["tag_id"], name=row["name"], category=row["category"], position=row["position"])
+            Tag(
+                id=row["tag_id"],
+                name=row["name"],
+                category=row["category"],
+                position=row["position"],
+            )
         )
     return mapping
 
 
-def _replace_dish_tags(conn: sqlite3.Connection, dish_id: int, tag_ids: Sequence[int]) -> None:
+def _replace_dish_tags(
+    conn: sqlite3.Connection, dish_id: int, tag_ids: Sequence[int]
+) -> None:
     conn.execute("DELETE FROM dish_tags WHERE dish_id = ?", (dish_id,))
     deduped = list(dict.fromkeys(tag_ids))
     if deduped:
@@ -615,7 +728,9 @@ def delete_dish(dish_id: int) -> None:
 # ── Tag CRUD ───────────────────────────────────────────────────────────────────
 
 
-def _load_keywords_for_tags(conn: sqlite3.Connection, tag_ids: Sequence[int]) -> Dict[int, List[str]]:
+def _load_keywords_for_tags(
+    conn: sqlite3.Connection, tag_ids: Sequence[int]
+) -> Dict[int, List[str]]:
     """Return a mapping of tag_id → list of keywords."""
     if not tag_ids:
         return {}
@@ -630,7 +745,9 @@ def _load_keywords_for_tags(conn: sqlite3.Connection, tag_ids: Sequence[int]) ->
     return mapping
 
 
-def _set_tag_keywords_conn(conn: sqlite3.Connection, tag_id: int, keywords: List[str]) -> None:
+def _set_tag_keywords_conn(
+    conn: sqlite3.Connection, tag_id: int, keywords: List[str]
+) -> None:
     """Replace all keywords for a tag within an existing connection/transaction."""
     cleaned = [kw.strip().lower() for kw in keywords if kw.strip()]
     deduped = list(dict.fromkeys(cleaned))
@@ -644,7 +761,9 @@ def _set_tag_keywords_conn(conn: sqlite3.Connection, tag_id: int, keywords: List
 
 def load_tags() -> List[Tag]:
     with _get_connection() as conn:
-        rows = conn.execute("SELECT id, name, category, position, is_hidden FROM tags").fetchall()
+        rows = conn.execute(
+            "SELECT id, name, category, position, is_hidden FROM tags"
+        ).fetchall()
         tag_ids = [row["id"] for row in rows]
         kw_map = _load_keywords_for_tags(conn, tag_ids)
     tags = [
@@ -666,7 +785,9 @@ def get_tag_counts() -> Dict[str, int]:
     """Return total, visible, and hidden tag counts for summary display."""
     with _get_connection() as conn:
         total = conn.execute("SELECT COUNT(*) AS n FROM tags").fetchone()["n"]
-        hidden = conn.execute("SELECT COUNT(*) AS n FROM tags WHERE is_hidden = 1").fetchone()["n"]
+        hidden = conn.execute(
+            "SELECT COUNT(*) AS n FROM tags WHERE is_hidden = 1"
+        ).fetchone()["n"]
     return {"total": total, "visible": total - hidden, "hidden": hidden}
 
 
@@ -731,7 +852,9 @@ def set_tag_keywords(tag_id: int, keywords: List[str]) -> None:
 def toggle_tag_visibility(tag_id: int) -> bool:
     """Flip is_hidden for a tag. Returns the new is_hidden value."""
     with _get_connection() as conn:
-        row = conn.execute("SELECT is_hidden FROM tags WHERE id = ?", (tag_id,)).fetchone()
+        row = conn.execute(
+            "SELECT is_hidden FROM tags WHERE id = ?", (tag_id,)
+        ).fetchone()
         if not row:
             raise ValueError("Tag not found")
         new_val = 0 if row["is_hidden"] else 1
@@ -792,7 +915,9 @@ def create_tag(
     if not cat:
         raise ValueError("Category cannot be empty")
     with _get_connection() as conn:
-        if conn.execute("SELECT id FROM tags WHERE LOWER(name) = LOWER(?)", (cleaned_name,)).fetchone():
+        if conn.execute(
+            "SELECT id FROM tags WHERE LOWER(name) = LOWER(?)", (cleaned_name,)
+        ).fetchone():
             raise ValueError("That tag already exists")
         row = conn.execute(
             "SELECT COALESCE(MAX(position), -1) AS max_position FROM tags WHERE category = ?",
@@ -810,8 +935,14 @@ def create_tag(
             kw_list = [kw.strip().lower() for kw in keywords if kw.strip()]
             kw_list = list(dict.fromkeys(kw_list))
             _set_tag_keywords_conn(conn, tag_id, kw_list)
-    return Tag(id=tag_id, name=cleaned_name, category=cat, position=next_position,
-               keywords=kw_list, is_hidden=is_hidden)
+    return Tag(
+        id=tag_id,
+        name=cleaned_name,
+        category=cat,
+        position=next_position,
+        keywords=kw_list,
+        is_hidden=is_hidden,
+    )
 
 
 def delete_tag(tag_id: int) -> None:
@@ -855,18 +986,29 @@ def save_app_config_to_db(config: AppConfig) -> None:
     with _get_connection() as conn:
         conn.execute(
             "DELETE FROM config_entries WHERE category IN (?, ?, ?)",
-            (CONFIG_CATEGORY_DISH_TYPES, CONFIG_CATEGORY_ADMIN_NETWORKS, CONFIG_CATEGORY_WEB_ADMIN),
+            (
+                CONFIG_CATEGORY_DISH_TYPES,
+                CONFIG_CATEGORY_ADMIN_NETWORKS,
+                CONFIG_CATEGORY_WEB_ADMIN,
+            ),
         )
-        _bulk_insert_config_entries(conn, CONFIG_CATEGORY_DISH_TYPES, config.dish_types, timestamp)
-        _bulk_insert_config_entries(conn, CONFIG_CATEGORY_ADMIN_NETWORKS, config.admin_networks, timestamp)
         _bulk_insert_config_entries(
-            conn, CONFIG_CATEGORY_WEB_ADMIN,
+            conn, CONFIG_CATEGORY_DISH_TYPES, config.dish_types, timestamp
+        )
+        _bulk_insert_config_entries(
+            conn, CONFIG_CATEGORY_ADMIN_NETWORKS, config.admin_networks, timestamp
+        )
+        _bulk_insert_config_entries(
+            conn,
+            CONFIG_CATEGORY_WEB_ADMIN,
             ["true" if config.web_admin_enabled else "false"],
             timestamp,
         )
 
 
-def _bulk_insert_config_entries(conn: sqlite3.Connection, category: str, values: List[str], timestamp: str) -> None:
+def _bulk_insert_config_entries(
+    conn: sqlite3.Connection, category: str, values: List[str], timestamp: str
+) -> None:
     if not values:
         return
     conn.executemany(
@@ -878,11 +1020,13 @@ def _bulk_insert_config_entries(conn: sqlite3.Connection, category: str, values:
 def _latest_updated_at(rows: list) -> datetime:
     if not rows:
         return datetime.fromtimestamp(0, tz=timezone.utc)
+
     def _parse(ts: str) -> datetime:
         dt = datetime.fromisoformat(ts)
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
         return dt
+
     return max(_parse(row["updated_at"]) for row in rows)
 
 
@@ -894,8 +1038,12 @@ def _seed_or_migrate_config_entries(conn: sqlite3.Connection) -> None:
         return
     timestamp = datetime.now(timezone.utc).isoformat()
     defaults = AppConfig()
-    _bulk_insert_config_entries(conn, CONFIG_CATEGORY_DISH_TYPES, defaults.dish_types, timestamp)
-    _bulk_insert_config_entries(conn, CONFIG_CATEGORY_ADMIN_NETWORKS, defaults.admin_networks, timestamp)
+    _bulk_insert_config_entries(
+        conn, CONFIG_CATEGORY_DISH_TYPES, defaults.dish_types, timestamp
+    )
+    _bulk_insert_config_entries(
+        conn, CONFIG_CATEGORY_ADMIN_NETWORKS, defaults.admin_networks, timestamp
+    )
     _bulk_insert_config_entries(conn, CONFIG_CATEGORY_WEB_ADMIN, ["false"], timestamp)
 
 
@@ -915,7 +1063,9 @@ def _add_missing_default_tags(conn: sqlite3.Connection) -> None:
         for name in DEFAULT_HIDDEN_TAG_GROUPS.get(category, []):
             all_defaults.append((name, category, True))
     for name, category, is_hidden in all_defaults:
-        if conn.execute("SELECT id FROM tags WHERE LOWER(name) = LOWER(?)", (name,)).fetchone():
+        if conn.execute(
+            "SELECT id FROM tags WHERE LOWER(name) = LOWER(?)", (name,)
+        ).fetchone():
             continue
         row = conn.execute(
             "SELECT COALESCE(MAX(position), -1) AS mp FROM tags WHERE category = ?",
@@ -965,7 +1115,9 @@ def _insert_default_tags(conn: sqlite3.Connection) -> None:
 
 def _seed_or_migrate_keywords(conn: sqlite3.Connection) -> None:
     """Seed auto-detect keywords for existing tags that have none yet."""
-    count = conn.execute("SELECT COUNT(*) AS count FROM tag_keywords").fetchone()["count"]
+    count = conn.execute("SELECT COUNT(*) AS count FROM tag_keywords").fetchone()[
+        "count"
+    ]
     if count > 0:
         return
     tag_rows = conn.execute("SELECT id, name FROM tags").fetchall()
@@ -973,5 +1125,3 @@ def _seed_or_migrate_keywords(conn: sqlite3.Connection) -> None:
         kws = DEFAULT_TAG_KEYWORDS.get(row["name"], [])
         if kws:
             _set_tag_keywords_conn(conn, row["id"], kws)
-
-
