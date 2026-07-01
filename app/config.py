@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -27,8 +26,6 @@ class AppConfig(BaseModel):
     )
     admin_networks: List[str] = Field(default_factory=lambda: ["127.0.0.1/32"])
     # False by default — use `dishlist admin web enable` to turn on.
-    # Migration: existing config.json files without this key and with custom
-    # networks are treated as enabled to preserve prior behaviour.
     web_admin_enabled: bool = False
 
 
@@ -37,75 +34,48 @@ def _ensure_data_dir() -> None:
 
 
 def load_config() -> AppConfig:
-    """Load config preferring SQLite but staying in sync with config.json."""
+    """Load config from SQLite. Migrates from config.json on first run if needed."""
 
     _ensure_data_dir()
     db_entry = _load_config_from_db()
-    db_config: Optional[AppConfig]
-    db_updated_at: Optional[datetime]
     if db_entry:
-        db_config, db_updated_at = db_entry
-    else:
-        db_config, db_updated_at = None, None
+        return db_entry[0]
 
-    file_config = _load_config_from_file()
-    file_updated_at = _get_file_updated_at()
-
-    if file_config and db_config:
-        file_newer = _is_file_newer(file_updated_at, db_updated_at)
-        if file_newer:
-            if file_config != db_config:
-                _save_config_to_db(file_config)
-            return file_config
-
-        if file_config != db_config:
-            _write_config_to_file(db_config)
-        return db_config
-
+    # One-time migration: seed DB from config.json if it exists
+    file_config = _migrate_from_file()
     if file_config:
         _save_config_to_db(file_config)
         return file_config
 
-    if db_config:
-        _write_config_to_file(db_config)
-        return db_config
-
     config = AppConfig()
-    _write_config_to_file(config)
     _save_config_to_db(config)
     return config
 
 
 def save_config(config: AppConfig) -> None:
-    """Persist config to disk and SQLite."""
+    """Persist config to SQLite."""
 
     _ensure_data_dir()
-    _write_config_to_file(config)
     _save_config_to_db(config)
 
 
-def _load_config_from_file() -> Optional[AppConfig]:
+def _migrate_from_file() -> Optional[AppConfig]:
+    """Read config.json once to seed the DB. Only called when DB has no config."""
     if not CONFIG_PATH.exists():
         return None
 
     with CONFIG_PATH.open("r", encoding="utf-8") as fp:
         data = json.load(fp)
 
+    # Migration: existing config.json files without this key and with custom
+    # networks are treated as enabled to preserve prior behaviour.
+    if "web_admin_enabled" not in data and data.get("admin_networks"):
+        data["web_admin_enabled"] = True
+
     return AppConfig(**data)
 
 
-def _write_config_to_file(config: AppConfig) -> None:
-    with CONFIG_PATH.open("w", encoding="utf-8") as fp:
-        json.dump(config.model_dump(), fp, indent=2)
-
-
-def _get_file_updated_at() -> Optional[datetime]:
-    if not CONFIG_PATH.exists():
-        return None
-    return datetime.fromtimestamp(CONFIG_PATH.stat().st_mtime, tz=timezone.utc)
-
-
-def _load_config_from_db() -> Optional[Tuple[AppConfig, datetime]]:
+def _load_config_from_db() -> Optional[tuple]:
     from .storage import load_app_config_from_db
 
     return load_app_config_from_db()
@@ -115,11 +85,3 @@ def _save_config_to_db(config: AppConfig) -> None:
     from .storage import save_app_config_to_db
 
     save_app_config_to_db(config)
-
-
-def _is_file_newer(file_updated_at: Optional[datetime], db_updated_at: Optional[datetime]) -> bool:
-    if file_updated_at and db_updated_at:
-        return file_updated_at > db_updated_at
-    if file_updated_at and not db_updated_at:
-        return True
-    return False
