@@ -232,7 +232,7 @@ class TestAdminReloadEndpoint:
         save_config(cfg)
         app.state.config = cfg
 
-        # Change config on disk without touching app.state
+        # Change config in DB without touching app.state
         updated = AppConfig(
             web_admin_enabled=True,
             admin_networks=["127.0.0.1/32"],
