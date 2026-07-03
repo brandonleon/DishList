@@ -32,6 +32,8 @@ DB_PATH = DATA_DIR / "dishlist.db"
 CONFIG_CATEGORY_DISH_TYPES = "dish_type"
 CONFIG_CATEGORY_ADMIN_NETWORKS = "admin_network"
 CONFIG_CATEGORY_WEB_ADMIN = "web_admin"
+CONFIG_CATEGORY_METRICS_NETWORKS = "metrics_network"
+CONFIG_CATEGORY_METRICS = "metrics_enabled"
 
 TAG_CATEGORY_ORDER = [
     "Allergen warnings",
@@ -525,6 +527,11 @@ def count_events() -> int:
         return conn.execute("SELECT COUNT(*) AS n FROM events").fetchone()["n"]
 
 
+def count_dishes() -> int:
+    with _get_connection() as conn:
+        return conn.execute("SELECT COUNT(*) AS n FROM dishes").fetchone()["n"]
+
+
 def update_event(
     event_id: int,
     name: str,
@@ -967,17 +974,50 @@ def load_app_config_from_db() -> Optional[Tuple[AppConfig, datetime]]:
             "SELECT value, updated_at FROM config_entries WHERE category = ?",
             (CONFIG_CATEGORY_WEB_ADMIN,),
         ).fetchall()
-    if not dish_rows and not admin_rows and not web_admin_rows:
+        metrics_network_rows = conn.execute(
+            "SELECT value, position, updated_at FROM config_entries WHERE category = ? ORDER BY position ASC, id ASC",
+            (CONFIG_CATEGORY_METRICS_NETWORKS,),
+        ).fetchall()
+        metrics_enabled_rows = conn.execute(
+            "SELECT value, updated_at FROM config_entries WHERE category = ?",
+            (CONFIG_CATEGORY_METRICS,),
+        ).fetchall()
+    if (
+        not dish_rows
+        and not admin_rows
+        and not web_admin_rows
+        and not metrics_network_rows
+        and not metrics_enabled_rows
+    ):
         return None
     dish_types = [row["value"] for row in dish_rows]
     admin_networks = [row["value"] for row in admin_rows]
-    web_admin_enabled = bool(web_admin_rows) and web_admin_rows[0]["value"] == "true"
-    all_rows = list(dish_rows) + list(admin_rows) + list(web_admin_rows)
+    # Migration: existing DB rows without a web_admin entry and with custom
+    # networks are treated as enabled to preserve prior behaviour.
+    if web_admin_rows:
+        web_admin_enabled = web_admin_rows[0]["value"] == "true"
+    else:
+        web_admin_enabled = bool(admin_networks)
+    metrics_networks = [row["value"] for row in metrics_network_rows]
+    if not metrics_networks:
+        metrics_networks = ["127.0.0.1/32"]
+    metrics_enabled = (
+        bool(metrics_enabled_rows) and metrics_enabled_rows[0]["value"] == "true"
+    )
+    all_rows = (
+        list(dish_rows)
+        + list(admin_rows)
+        + list(web_admin_rows)
+        + list(metrics_network_rows)
+        + list(metrics_enabled_rows)
+    )
     latest_updated = _latest_updated_at(all_rows)
     return AppConfig(
         dish_types=dish_types,
         admin_networks=admin_networks,
         web_admin_enabled=web_admin_enabled,
+        metrics_networks=metrics_networks,
+        metrics_enabled=metrics_enabled,
     ), latest_updated
 
 
@@ -985,11 +1025,13 @@ def save_app_config_to_db(config: AppConfig) -> None:
     timestamp = datetime.now(timezone.utc).isoformat()
     with _get_connection() as conn:
         conn.execute(
-            "DELETE FROM config_entries WHERE category IN (?, ?, ?)",
+            "DELETE FROM config_entries WHERE category IN (?, ?, ?, ?, ?)",
             (
                 CONFIG_CATEGORY_DISH_TYPES,
                 CONFIG_CATEGORY_ADMIN_NETWORKS,
                 CONFIG_CATEGORY_WEB_ADMIN,
+                CONFIG_CATEGORY_METRICS_NETWORKS,
+                CONFIG_CATEGORY_METRICS,
             ),
         )
         _bulk_insert_config_entries(
@@ -1002,6 +1044,18 @@ def save_app_config_to_db(config: AppConfig) -> None:
             conn,
             CONFIG_CATEGORY_WEB_ADMIN,
             ["true" if config.web_admin_enabled else "false"],
+            timestamp,
+        )
+        _bulk_insert_config_entries(
+            conn,
+            CONFIG_CATEGORY_METRICS_NETWORKS,
+            config.metrics_networks,
+            timestamp,
+        )
+        _bulk_insert_config_entries(
+            conn,
+            CONFIG_CATEGORY_METRICS,
+            ["true" if config.metrics_enabled else "false"],
             timestamp,
         )
 

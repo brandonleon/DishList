@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import ipaddress
 import json
+import os
+import signal
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -16,7 +18,13 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Resp
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from .config import AppConfig, load_config, save_config
+from .config import AppConfig, DATA_DIR, load_config, save_config
+from .metrics import (
+    DISHES_TOTAL,
+    EVENTS_TOTAL,
+    PrometheusMiddleware,
+    render_metrics,
+)
 from .models import DishEntry, Event
 from .storage import (
     add_dish,
@@ -30,6 +38,7 @@ from .storage import (
     reset_tags_to_defaults,
     toggle_tag_visibility,
     update_tag,
+    count_dishes,
     count_events,
     get_event_by_management_token,
     get_event_by_slug,
@@ -48,16 +57,42 @@ TEMPLATES_DIR = BASE_DIR / "templates"
 STATIC_DIR = BASE_DIR / "static"
 
 ADMIN_PATH = "/pantry-admin"
+METRICS_PATH = "/metrics"
+PID_PATH = DATA_DIR / "dishlist.pid"
+
+
+def _do_reload_config() -> None:
+    app.state.config = load_config()
+
+
+def _handle_sigusr1(signum, frame) -> None:  # noqa: ANN001
+    _do_reload_config()
 
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     init_db()
     app.state.config = load_config()
+    try:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        PID_PATH.write_text(str(os.getpid()))
+    except OSError:  # pragma: no cover
+        pass
+    try:
+        signal.signal(signal.SIGUSR1, _handle_sigusr1)
+    except (OSError, AttributeError, ValueError):
+        pass
+
     yield
+
+    try:
+        PID_PATH.unlink(missing_ok=True)
+    except OSError:  # pragma: no cover
+        pass
 
 
 app = FastAPI(title="DishList", lifespan=_lifespan)
+app.add_middleware(PrometheusMiddleware, exclude_paths=(METRICS_PATH,))
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
@@ -103,7 +138,7 @@ APP_VERSION = _load_app_version()
 
 templates.env.filters["format_dish_timestamp"] = _format_dish_timestamp
 templates.env.filters["tag_category_class"] = _tag_category_class
-templates.env.globals["app_version"] = APP_VERSION  # type: ignore
+templates.env.globals["app_version"] = APP_VERSION
 
 
 def get_config() -> AppConfig:
@@ -135,17 +170,25 @@ def _check_admin_access(request: Request, config: AppConfig) -> None:
     """Raise 404 if web admin is disabled, 403 if IP is not allowed."""
     if not config.web_admin_enabled:
         raise HTTPException(status_code=404, detail="Not found")
-    if not _is_ip_allowed(request, config):
+    if not _is_ip_allowed(request, config.admin_networks):
         raise HTTPException(status_code=403, detail="Admin access restricted")
 
 
-def _is_ip_allowed(request: Request, config: AppConfig) -> bool:
+def _check_metrics_access(request: Request, config: AppConfig) -> None:
+    """Raise 404 if metrics are disabled, 403 if IP is not allowed."""
+    if not config.metrics_enabled:
+        raise HTTPException(status_code=404, detail="Not found")
+    if not _is_ip_allowed(request, config.metrics_networks):
+        raise HTTPException(status_code=403, detail="Metrics access restricted")
+
+
+def _is_ip_allowed(request: Request, networks: List[str]) -> bool:
     client_host = request.client.host if request.client else "127.0.0.1"
     try:
         client_ip = ipaddress.ip_address(client_host)
     except ValueError:
         return False
-    for network in config.admin_networks:
+    for network in networks:
         try:
             if client_ip in ipaddress.ip_network(network, strict=False):
                 return True
@@ -279,6 +322,18 @@ def health() -> Response:
     return Response(
         content=body, media_type="application/json", status_code=status_code
     )
+
+
+@app.get(METRICS_PATH, include_in_schema=False)
+def metrics(request: Request) -> Response:
+    config = get_config()
+    _check_metrics_access(request, config)
+
+    def _refresh() -> None:
+        EVENTS_TOTAL.set(count_events())
+        DISHES_TOTAL.set(count_dishes())
+
+    return render_metrics(refresh_gauges=_refresh)
 
 
 # ── Event public routes ────────────────────────────────────────────────────────
@@ -643,8 +698,19 @@ def admin_page(request: Request) -> HTMLResponse:
             "admin_path": ADMIN_PATH,
             "tag_counts": get_tag_counts(),
             "admin_tags_url": str(request.url_for("admin_tags_page")),
+            "tag_success": request.query_params.get("tag_success"),
+            "tag_error": request.query_params.get("tag_error"),
         },
     )
+
+
+@app.post(f"{ADMIN_PATH}/reload")
+def reload_config(request: Request) -> RedirectResponse:
+    """Force a config reload from the persisted store into app.state."""
+    config = get_config()
+    _check_admin_access(request, config)
+    _do_reload_config()
+    return _redirect_to_admin(request, success="Configuration reloaded")
 
 
 @app.get(f"{ADMIN_PATH}/tags", response_class=HTMLResponse)
@@ -672,6 +738,7 @@ def update_admin_settings(
     request: Request,
     dish_types_input: str = Form(...),
     admin_networks_input: str = Form(...),
+    metrics_networks_input: Optional[str] = Form(None),
 ) -> RedirectResponse:
     config = get_config()
     _check_admin_access(request, config)
@@ -689,10 +756,19 @@ def update_admin_settings(
     if not networks:
         raise HTTPException(status_code=400, detail="At least one network is required")
 
+    if metrics_networks_input is not None:
+        metrics_networks = [
+            line.strip() for line in metrics_networks_input.splitlines() if line.strip()
+        ]
+    else:
+        metrics_networks = config.metrics_networks
+
     new_config = AppConfig(
         dish_types=dish_types,
         admin_networks=networks,
         web_admin_enabled=config.web_admin_enabled,
+        metrics_networks=metrics_networks,
+        metrics_enabled=config.metrics_enabled,
     )
     save_config(new_config)
     app.state.config = new_config
