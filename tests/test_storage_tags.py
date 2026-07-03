@@ -100,7 +100,7 @@ class TestCreateTag:
             create_tag("Something", "")
 
     def test_created_tag_appears_in_load_tags(self):
-        tag = create_tag("Custom tag", "Content & serving")
+        create_tag("Custom tag", "Content & serving")
         names = [t.name for t in load_tags()]
         assert "Custom tag" in names
 
@@ -140,7 +140,7 @@ class TestUpdateTag:
         assert updated.is_hidden is True
 
     def test_duplicate_name_raises(self):
-        t1 = create_tag("Alpha", "Content & serving")
+        create_tag("Alpha", "Content & serving")
         t2 = create_tag("Beta", "Content & serving")
         with pytest.raises(ValueError, match="already exists"):
             update_tag(t2.id, "Alpha", "Content & serving")

@@ -4,16 +4,14 @@ import ipaddress
 import json
 import os
 import signal
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 from urllib.parse import urlencode
 from importlib import metadata
 
-try:
-    import tomllib
-except ModuleNotFoundError:  # pragma: no cover
-    tomllib = None  # type: ignore
+import tomllib
 
 from fastapi import FastAPI, Form, HTTPException, Request, status
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
@@ -37,17 +35,16 @@ from .storage import (
     delete_tag,
     get_dish,
     get_tag_counts,
-    load_tags,
     reset_tags_to_defaults,
-    set_tag_keywords,
     toggle_tag_visibility,
     update_tag,
+    count_dishes,
+    count_events,
     get_event_by_management_token,
     get_event_by_slug,
     get_tag_categories,
     get_tags_by_ids,
     init_db,
-    load_all_dishes,
     load_dishes_for_event,
     load_events,
     load_tag_groups,
@@ -63,45 +60,53 @@ ADMIN_PATH = "/pantry-admin"
 METRICS_PATH = "/metrics"
 PID_PATH = DATA_DIR / "dishlist.pid"
 
-app = FastAPI(title="DishList")
+
+def _do_reload_config() -> None:
+    app.state.config = load_config()
+
+
+def _handle_sigusr1(signum, frame) -> None:  # noqa: ANN001
+    _do_reload_config()
+
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    init_db()
+    app.state.config = load_config()
+    try:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        PID_PATH.write_text(str(os.getpid()))
+    except OSError:  # pragma: no cover
+        pass
+    try:
+        signal.signal(signal.SIGUSR1, _handle_sigusr1)
+    except (OSError, AttributeError, ValueError):
+        pass
+
+    yield
+
+    try:
+        PID_PATH.unlink(missing_ok=True)
+    except OSError:  # pragma: no cover
+        pass
+
+
+app = FastAPI(title="DishList", lifespan=_lifespan)
 app.add_middleware(PrometheusMiddleware, exclude_paths=(METRICS_PATH,))
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
-PLANT_BASED_FLAGS = {"vegan", "vegetarian", "pescatarian"}
 TAG_CATEGORY_CLASSES = {
-    # Current categories
     "Dietary preferences": "tag-pill-patterns",
     "Allergen warnings": "tag-pill-avoidances",
     "Content & serving": "tag-pill-logistics",
-    # Legacy
-    "Allergens": "tag-pill-avoidances",
-    # Legacy category names (kept so old data still renders)
-    "Dietary patterns": "tag-pill-patterns",
-    "Ingredient avoidances": "tag-pill-avoidances",
-    "Preparation and cross-contact": "tag-pill-prep",
-    "Additives and content": "tag-pill-additives",
-    "Spice and suitability": "tag-pill-spice",
-    "Serving logistics": "tag-pill-logistics",
 }
 DEFAULT_TAG_CLASS = "tag-pill-generic"
 APP_VERSION = None
 
 
-def _dietary_badge_class(flag: str) -> str:
-    normalized = flag.strip().lower()
-    if normalized in PLANT_BASED_FLAGS:
-        return "bg-success-subtle text-success"
-    if normalized.startswith("contains "):
-        return "bg-warning-subtle text-warning-emphasis"
-    return "bg-secondary-subtle text-secondary"
-
-
 def _tag_category_class(category: str) -> str:
     return TAG_CATEGORY_CLASSES.get(category, DEFAULT_TAG_CLASS)
-
-
-templates.env.filters["dietary_badge_class"] = _dietary_badge_class
 
 
 def _format_dish_timestamp(value: datetime | str) -> str:
@@ -136,51 +141,8 @@ templates.env.filters["tag_category_class"] = _tag_category_class
 templates.env.globals["app_version"] = APP_VERSION
 
 
-def _do_reload_config() -> None:
-    """Force-refresh the in-memory config from the persisted store."""
-    app.state.config = load_config()
-
-
-def _handle_sigusr1(signum, frame) -> None:  # noqa: ANN001
-    """SIGUSR1 handler: reload config without restarting the server."""
-    _do_reload_config()
-
-
-@app.on_event("startup")
-def _startup() -> None:
-    init_db()
-    app.state.config = load_config()
-    # Write PID so `dishlist admin reload` can signal us.
-    try:
-        DATA_DIR.mkdir(parents=True, exist_ok=True)
-        PID_PATH.write_text(str(os.getpid()))
-    except OSError:  # pragma: no cover
-        pass
-    # Install SIGUSR1 → config reload.
-    # Guards: SIGUSR1 absent on Windows; signal() requires the main thread.
-    try:
-        signal.signal(signal.SIGUSR1, _handle_sigusr1)
-    except (OSError, AttributeError, ValueError):
-        # ValueError: "signal only works in main thread" (e.g. tests)
-        pass
-
-
-@app.on_event("shutdown")
-def _shutdown() -> None:
-    try:
-        PID_PATH.unlink(missing_ok=True)
-    except OSError:  # pragma: no cover
-        pass
-
-
 def get_config() -> AppConfig:
     return getattr(app.state, "config", load_config())
-
-
-def _parse_allergens(raw: Optional[str]) -> List[str]:
-    if not raw:
-        return []
-    return [chunk.strip() for chunk in raw.split(",") if chunk.strip()]
 
 
 def _normalize_tag_ids(raw_ids: List[int]) -> List[int]:
@@ -194,8 +156,10 @@ def _filter_dishes(dishes: List[DishEntry], query: str) -> List[DishEntry]:
     filtered: List[DishEntry] = []
     for dish in dishes:
         searchable = [
-            dish.dish_name, dish.contributor, dish.dish_type,
-            dish.notes or "", ", ".join(dish.allergens), ", ".join(dish.dietary_flags),
+            dish.dish_name,
+            dish.contributor,
+            dish.dish_type,
+            dish.notes or "",
         ]
         if any(search in chunk.lower() for chunk in searchable if chunk):
             filtered.append(dish)
@@ -283,15 +247,20 @@ def create_event_submit(
     host_item_types: List[str] = Form(default=[]),
     host_item_notes: List[str] = Form(default=[]),
 ) -> RedirectResponse:
-    dish_types = [line.strip() for line in dish_types_input.splitlines() if line.strip()]
+    dish_types = [
+        line.strip() for line in dish_types_input.splitlines() if line.strip()
+    ]
     if not dish_types:
-        raise HTTPException(status_code=400, detail="At least one dish type is required")
+        raise HTTPException(
+            status_code=400, detail="At least one dish type is required"
+        )
 
     # Validate event_date if provided
     clean_date: Optional[str] = None
     if event_date and event_date.strip():
         try:
             from datetime import date
+
             date.fromisoformat(event_date.strip())
             clean_date = event_date.strip()
         except ValueError:
@@ -299,7 +268,9 @@ def create_event_submit(
 
     event = create_event(
         name=name,
-        description=description.strip() if description and description.strip() else None,
+        description=description.strip()
+        if description and description.strip()
+        else None,
         event_date=clean_date,
         host_name=host_name.strip() if host_name and host_name.strip() else "The House",
         dish_types=dish_types,
@@ -307,7 +278,9 @@ def create_event_submit(
     )
 
     # Add host contributions
-    for item_name, item_type, item_notes in zip(host_item_names, host_item_types, host_item_notes):
+    for item_name, item_type, item_notes in zip(
+        host_item_names, host_item_types, host_item_notes
+    ):
         item_name = item_name.strip()
         if not item_name:
             continue
@@ -335,14 +308,30 @@ def favicon() -> FileResponse:
     return FileResponse(STATIC_DIR / "favicon.ico", media_type="image/x-icon")
 
 
+@app.get("/health", include_in_schema=False)
+def health() -> Response:
+    try:
+        count_events()
+        db_status = "ok"
+    except Exception:
+        db_status = "error"
+
+    overall = "ok" if db_status == "ok" else "degraded"
+    status_code = 200 if overall == "ok" else 503
+    body = json.dumps({"status": overall, "version": APP_VERSION, "db": db_status})
+    return Response(
+        content=body, media_type="application/json", status_code=status_code
+    )
+
+
 @app.get(METRICS_PATH, include_in_schema=False)
 def metrics(request: Request) -> Response:
     config = get_config()
     _check_metrics_access(request, config)
 
     def _refresh() -> None:
-        EVENTS_TOTAL.set(len(load_events()))
-        DISHES_TOTAL.set(len(load_all_dishes()))
+        EVENTS_TOTAL.set(count_events())
+        DISHES_TOTAL.set(count_dishes())
 
     return render_metrics(refresh_gauges=_refresh)
 
@@ -361,7 +350,9 @@ def event_home(request: Request, slug: str) -> HTMLResponse:
     all_dishes = load_dishes_for_event(event.id)
     host_dishes = [d for d in all_dishes if d.is_host_item]
     guest_dishes = [d for d in all_dishes if not d.is_host_item]
-    filtered_guests = _filter_dishes(guest_dishes, search_query) if search_query else guest_dishes
+    filtered_guests = (
+        _filter_dishes(guest_dishes, search_query) if search_query else guest_dishes
+    )
 
     return templates.TemplateResponse(
         request,
@@ -382,14 +373,13 @@ def event_home(request: Request, slug: str) -> HTMLResponse:
 def event_add_form(request: Request, slug: str) -> HTMLResponse:
     event = _get_event_by_slug_or_404(slug)
     if not event.is_active:
-        raise HTTPException(status_code=403, detail="This event is no longer accepting submissions")
+        raise HTTPException(
+            status_code=403, detail="This event is no longer accepting submissions"
+        )
     tag_groups = load_tag_groups()
     # Build keyword map for client-side auto-detection: {tagId: ["kw1", "kw2"]}
     tag_kw_map = {
-        tag.id: tag.keywords
-        for _, tags in tag_groups
-        for tag in tags
-        if tag.keywords
+        tag.id: tag.keywords for _, tags in tag_groups for tag in tags if tag.keywords
     }
     hidden_count = sum(1 for _, tags in tag_groups for tag in tags if tag.is_hidden)
     return templates.TemplateResponse(
@@ -412,13 +402,14 @@ def event_add_submission(
     contributor: str = Form(..., min_length=1, max_length=80),
     dish_name: str = Form(..., min_length=1, max_length=120),
     dish_type: str = Form(...),
-    allergens: Optional[str] = Form(None),
     notes: Optional[str] = Form(None),
     dietary_tags: List[int] = Form(default=[]),
 ) -> RedirectResponse:
     event = _get_event_by_slug_or_404(slug)
     if not event.is_active:
-        raise HTTPException(status_code=403, detail="This event is no longer accepting submissions")
+        raise HTTPException(
+            status_code=403, detail="This event is no longer accepting submissions"
+        )
     if dish_type not in event.dish_types:
         raise HTTPException(status_code=400, detail="Unknown dish type")
 
@@ -433,8 +424,6 @@ def event_add_submission(
             contributor=contributor.strip(),
             dish_name=dish_name.strip(),
             dish_type=dish_type,
-            allergens=_parse_allergens(allergens),
-            dietary_flags=[tag.name for tag in tags],
             tag_ids=[tag.id for tag in tags],
             tags=tags,
             notes=notes.strip() if notes else None,
@@ -447,7 +436,9 @@ def event_add_submission(
 
 
 @app.get("/e/{slug}/table/rows", response_class=HTMLResponse)
-def event_table_rows_partial(request: Request, slug: str, search: str = "") -> HTMLResponse:
+def event_table_rows_partial(
+    request: Request, slug: str, search: str = ""
+) -> HTMLResponse:
     event = _get_event_by_slug_or_404(slug)
     all_dishes = load_dishes_for_event(event.id)
     guest_dishes = [d for d in all_dishes if not d.is_host_item]
@@ -458,7 +449,9 @@ def event_table_rows_partial(request: Request, slug: str, search: str = "") -> H
 
 
 @app.get("/e/{slug}/cards/grid", response_class=HTMLResponse)
-def event_card_grid_partial(request: Request, slug: str, search: str = "") -> HTMLResponse:
+def event_card_grid_partial(
+    request: Request, slug: str, search: str = ""
+) -> HTMLResponse:
     event = _get_event_by_slug_or_404(slug)
     all_dishes = load_dishes_for_event(event.id)
     guest_dishes = [d for d in all_dishes if not d.is_host_item]
@@ -506,14 +499,19 @@ def update_event_settings(
     is_active: Optional[str] = Form(None),
 ) -> RedirectResponse:
     event = _get_event_by_token_or_404(token)
-    dish_types = [line.strip() for line in dish_types_input.splitlines() if line.strip()]
+    dish_types = [
+        line.strip() for line in dish_types_input.splitlines() if line.strip()
+    ]
     if not dish_types:
-        raise HTTPException(status_code=400, detail="At least one dish type is required")
+        raise HTTPException(
+            status_code=400, detail="At least one dish type is required"
+        )
 
     clean_date: Optional[str] = None
     if event_date and event_date.strip():
         try:
             from datetime import date
+
             date.fromisoformat(event_date.strip())
             clean_date = event_date.strip()
         except ValueError:
@@ -522,7 +520,9 @@ def update_event_settings(
     update_event(
         event_id=event.id,
         name=name,
-        description=description.strip() if description and description.strip() else None,
+        description=description.strip()
+        if description and description.strip()
+        else None,
         event_date=clean_date,
         host_name=host_name.strip() if host_name and host_name.strip() else "The House",
         dish_types=dish_types,
@@ -540,7 +540,6 @@ def add_host_item(
     token: str,
     dish_name: str = Form(..., min_length=1, max_length=120),
     dish_type: str = Form(...),
-    allergens: Optional[str] = Form(None),
     notes: Optional[str] = Form(None),
 ) -> RedirectResponse:
     event = _get_event_by_token_or_404(token)
@@ -552,7 +551,6 @@ def add_host_item(
             contributor=event.host_name,
             dish_name=dish_name.strip(),
             dish_type=dish_type,
-            allergens=_parse_allergens(allergens),
             notes=notes.strip() if notes else None,
             is_host_item=True,
         )
@@ -582,6 +580,11 @@ def manage_edit_dish_form(request: Request, token: str, dish_id: int) -> HTMLRes
     dish = _get_dish_or_404(dish_id)
     if dish.event_id != event.id:
         raise HTTPException(status_code=404, detail="Dish not found")
+    tag_groups = load_tag_groups()
+    tag_kw_map = {
+        tag.id: tag.keywords for _, tags in tag_groups for tag in tags if tag.keywords
+    }
+    hidden_count = sum(1 for _, tags in tag_groups for tag in tags if tag.is_hidden)
     return templates.TemplateResponse(
         request,
         "manage_edit_dish.html",
@@ -589,7 +592,9 @@ def manage_edit_dish_form(request: Request, token: str, dish_id: int) -> HTMLRes
             "event": event,
             "dish": dish,
             "dish_types": event.dish_types,
-            "tag_groups": load_tag_groups(),
+            "tag_groups": tag_groups,
+            "tag_keywords_json": json.dumps(tag_kw_map),
+            "hidden_tag_count": hidden_count,
         },
     )
 
@@ -602,7 +607,6 @@ def manage_edit_dish_submit(
     contributor: str = Form(..., min_length=1, max_length=80),
     dish_name: str = Form(..., min_length=1, max_length=120),
     dish_type: str = Form(...),
-    allergens: Optional[str] = Form(None),
     notes: Optional[str] = Form(None),
     dietary_tags: List[int] = Form(default=[]),
 ) -> RedirectResponse:
@@ -625,8 +629,6 @@ def manage_edit_dish_submit(
                 "contributor": contributor.strip(),
                 "dish_name": dish_name.strip(),
                 "dish_type": dish_type,
-                "allergens": _parse_allergens(allergens),
-                "dietary_flags": [tag.name for tag in tags],
                 "tag_ids": [tag.id for tag in tags],
                 "tags": tags,
                 "notes": notes.strip() if notes else None,
@@ -655,7 +657,9 @@ def manage_delete_dish(request: Request, token: str, dish_id: int) -> RedirectRe
 # ── System admin routes (IP-gated) ─────────────────────────────────────────────
 
 
-def _redirect_to_admin(request: Request, success: Optional[str] = None, error: Optional[str] = None) -> RedirectResponse:
+def _redirect_to_admin(
+    request: Request, success: Optional[str] = None, error: Optional[str] = None
+) -> RedirectResponse:
     target = str(request.url_for("admin_page"))
     params = {}
     if success:
@@ -667,7 +671,9 @@ def _redirect_to_admin(request: Request, success: Optional[str] = None, error: O
     return RedirectResponse(url=target, status_code=status.HTTP_303_SEE_OTHER)
 
 
-def _redirect_to_admin_tags(request: Request, success: Optional[str] = None, error: Optional[str] = None) -> RedirectResponse:
+def _redirect_to_admin_tags(
+    request: Request, success: Optional[str] = None, error: Optional[str] = None
+) -> RedirectResponse:
     target = str(request.url_for("admin_tags_page"))
     params = {}
     if success:
@@ -737,10 +743,16 @@ def update_admin_settings(
     config = get_config()
     _check_admin_access(request, config)
 
-    dish_types = [line.strip() for line in dish_types_input.splitlines() if line.strip()]
-    networks = [line.strip() for line in admin_networks_input.splitlines() if line.strip()]
+    dish_types = [
+        line.strip() for line in dish_types_input.splitlines() if line.strip()
+    ]
+    networks = [
+        line.strip() for line in admin_networks_input.splitlines() if line.strip()
+    ]
     if not dish_types:
-        raise HTTPException(status_code=400, detail="At least one dish type is required")
+        raise HTTPException(
+            status_code=400, detail="At least one dish type is required"
+        )
     if not networks:
         raise HTTPException(status_code=400, detail="At least one network is required")
 
@@ -760,7 +772,9 @@ def update_admin_settings(
     )
     save_config(new_config)
     app.state.config = new_config
-    return RedirectResponse(url=request.url_for("admin_page"), status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(
+        url=request.url_for("admin_page"), status_code=status.HTTP_303_SEE_OTHER
+    )
 
 
 @app.post(f"{ADMIN_PATH}/tags")
@@ -773,12 +787,27 @@ def add_tag_action(
 ) -> RedirectResponse:
     config = get_config()
     _check_admin_access(request, config)
-    keywords = [kw.strip() for kw in (tag_keywords or "").split(",") if kw.strip()]
+    keywords: List[str] = [
+        kw.strip() for kw in (tag_keywords or "").split(",") if kw.strip()
+    ]
     try:
-        create_tag(tag_name, tag_category, keywords=keywords or None, is_hidden=tag_is_hidden is not None)
+        create_tag(
+            tag_name,
+            tag_category,
+            keywords=keywords or None,
+            is_hidden=tag_is_hidden is not None,
+        )
     except ValueError as exc:
         return _redirect_to_admin_tags(request, error=str(exc))
     return _redirect_to_admin_tags(request, success="Tag added")
+
+
+@app.post(f"{ADMIN_PATH}/tags/reset")
+def reset_tags_action(request: Request) -> RedirectResponse:
+    config = get_config()
+    _check_admin_access(request, config)
+    reset_tags_to_defaults()
+    return _redirect_to_admin_tags(request, success="Tag library reset to defaults")
 
 
 @app.post(f"{ADMIN_PATH}/tags/{{tag_id}}")
@@ -792,20 +821,20 @@ def update_tag_action(
 ) -> RedirectResponse:
     config = get_config()
     _check_admin_access(request, config)
-    keyword_list = [kw.strip() for kw in (keywords or "").split(",") if kw.strip()]
+    keyword_list: List[str] = [
+        kw.strip() for kw in (keywords or "").split(",") if kw.strip()
+    ]
     try:
-        update_tag(tag_id, name, category, keywords=keyword_list, is_hidden=is_hidden is not None)
+        update_tag(
+            tag_id,
+            name,
+            category,
+            keywords=keyword_list,
+            is_hidden=is_hidden is not None,
+        )
     except ValueError as exc:
         return _redirect_to_admin_tags(request, error=str(exc))
     return _redirect_to_admin_tags(request, success="Tag updated")
-
-
-@app.post(f"{ADMIN_PATH}/tags/reset")
-def reset_tags_action(request: Request) -> RedirectResponse:
-    config = get_config()
-    _check_admin_access(request, config)
-    reset_tags_to_defaults()
-    return _redirect_to_admin_tags(request, success="Tag library reset to defaults")
 
 
 @app.post(f"{ADMIN_PATH}/tags/{{tag_id}}/delete")
@@ -832,4 +861,6 @@ def admin_delete_event(request: Request, event_id: int) -> RedirectResponse:
     config = get_config()
     _check_admin_access(request, config)
     delete_event(event_id)
-    return RedirectResponse(url=request.url_for("admin_page"), status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(
+        url=request.url_for("admin_page"), status_code=status.HTTP_303_SEE_OTHER
+    )
