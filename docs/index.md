@@ -28,6 +28,17 @@ docker run -d --name dishlist -p 8000:8000 \
 
 Mount `data/` so the database and config persist between container restarts. Override the port with `-e PORT=8080`.
 
+A `Justfile` is included for server deployments:
+
+```bash
+just deploy   # git pull + docker compose up --build --detach
+just stop     # docker compose down
+just logs     # follow container logs
+just ps       # container status
+```
+
+DishList is designed to run behind a reverse proxy such as Nginx Proxy Manager. It automatically trusts `X-Forwarded-Proto` and `X-Forwarded-For` headers, so HTTPS links and redirects work correctly without extra configuration.
+
 #### Admin commands in Docker
 
 Run `dishlist admin` commands against the running container with `docker exec`, or as a one-shot using the same data volume:
@@ -107,6 +118,8 @@ Tags are warning-based — they describe what a dish *contains*, not what it is 
 Negation phrases are detected and ignored — typing `peanut free` or `dairy-free` will **not** select the corresponding allergen tag.
 
 Guests can adjust any auto-suggested tag freely before submitting.
+
+> **Need to change your submission?** The guest form doesn't support editing after submission. Ask the event host to update your entry from their management dashboard.
 
 ---
 
@@ -240,3 +253,6 @@ Run `uv run dishlist serve --no-reload` or set `DISHLIST_RELOAD=0`. Some environ
 
 **A tag auto-suggested incorrectly.**
 Auto-suggest is a convenience helper — guests can uncheck any tag before submitting. Tags can be renamed or removed via `dishlist admin tags`.
+
+**Running behind a reverse proxy (Nginx, Caddy, etc.) and seeing mixed-content warnings or broken search.**
+DishList trusts `X-Forwarded-Proto` and `X-Forwarded-For` headers automatically. Make sure your proxy is sending them — Nginx Proxy Manager does by default. If links still generate as `http://`, verify the proxy is correctly forwarding these headers to port 8000.

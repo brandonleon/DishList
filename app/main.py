@@ -11,10 +11,7 @@ from typing import List, Optional
 from urllib.parse import urlencode
 from importlib import metadata
 
-try:
-    import tomllib
-except ModuleNotFoundError:  # pragma: no cover
-    tomllib = None  # type: ignore
+import tomllib
 
 from fastapi import FastAPI, Form, HTTPException, Request, status
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
@@ -41,6 +38,8 @@ from .storage import (
     reset_tags_to_defaults,
     toggle_tag_visibility,
     update_tag,
+    count_dishes,
+    count_events,
     get_event_by_management_token,
     get_event_by_slug,
     get_tag_categories,
@@ -107,40 +106,17 @@ app.add_middleware(PrometheusMiddleware, exclude_paths=(METRICS_PATH,))
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
-PLANT_BASED_FLAGS = {"vegan", "vegetarian", "pescatarian"}
 TAG_CATEGORY_CLASSES = {
-    # Current categories
     "Dietary preferences": "tag-pill-patterns",
     "Allergen warnings": "tag-pill-avoidances",
     "Content & serving": "tag-pill-logistics",
-    # Legacy
-    "Allergens": "tag-pill-avoidances",
-    # Legacy category names (kept so old data still renders)
-    "Dietary patterns": "tag-pill-patterns",
-    "Ingredient avoidances": "tag-pill-avoidances",
-    "Preparation and cross-contact": "tag-pill-prep",
-    "Additives and content": "tag-pill-additives",
-    "Spice and suitability": "tag-pill-spice",
-    "Serving logistics": "tag-pill-logistics",
 }
 DEFAULT_TAG_CLASS = "tag-pill-generic"
 APP_VERSION = None
 
 
-def _dietary_badge_class(flag: str) -> str:
-    normalized = flag.strip().lower()
-    if normalized in PLANT_BASED_FLAGS:
-        return "bg-success-subtle text-success"
-    if normalized.startswith("contains "):
-        return "bg-warning-subtle text-warning-emphasis"
-    return "bg-secondary-subtle text-secondary"
-
-
 def _tag_category_class(category: str) -> str:
     return TAG_CATEGORY_CLASSES.get(category, DEFAULT_TAG_CLASS)
-
-
-templates.env.filters["dietary_badge_class"] = _dietary_badge_class
 
 
 def _format_dish_timestamp(value: datetime | str) -> str:
@@ -179,12 +155,6 @@ def get_config() -> AppConfig:
     return getattr(app.state, "config", load_config())
 
 
-def _parse_allergens(raw: Optional[str]) -> List[str]:
-    if not raw:
-        return []
-    return [chunk.strip() for chunk in raw.split(",") if chunk.strip()]
-
-
 def _normalize_tag_ids(raw_ids: List[int]) -> List[int]:
     return list(dict.fromkeys(raw_ids))
 
@@ -200,8 +170,6 @@ def _filter_dishes(dishes: List[DishEntry], query: str) -> List[DishEntry]:
             dish.contributor,
             dish.dish_type,
             dish.notes or "",
-            ", ".join(dish.allergens),
-            ", ".join(dish.dietary_flags),
         ]
         if any(search in chunk.lower() for chunk in searchable if chunk):
             filtered.append(dish)
@@ -444,7 +412,6 @@ def event_add_submission(
     contributor: str = Form(..., min_length=1, max_length=80),
     dish_name: str = Form(..., min_length=1, max_length=120),
     dish_type: str = Form(...),
-    allergens: Optional[str] = Form(None),
     notes: Optional[str] = Form(None),
     dietary_tags: List[int] = Form(default=[]),
 ) -> RedirectResponse:
@@ -467,8 +434,6 @@ def event_add_submission(
             contributor=contributor.strip(),
             dish_name=dish_name.strip(),
             dish_type=dish_type,
-            allergens=_parse_allergens(allergens),
-            dietary_flags=[tag.name for tag in tags],
             tag_ids=[tag.id for tag in tags],
             tags=tags,
             notes=notes.strip() if notes else None,
@@ -585,7 +550,6 @@ def add_host_item(
     token: str,
     dish_name: str = Form(..., min_length=1, max_length=120),
     dish_type: str = Form(...),
-    allergens: Optional[str] = Form(None),
     notes: Optional[str] = Form(None),
 ) -> RedirectResponse:
     event = _get_event_by_token_or_404(token)
@@ -597,7 +561,6 @@ def add_host_item(
             contributor=event.host_name,
             dish_name=dish_name.strip(),
             dish_type=dish_type,
-            allergens=_parse_allergens(allergens),
             notes=notes.strip() if notes else None,
             is_host_item=True,
         )
@@ -627,6 +590,11 @@ def manage_edit_dish_form(request: Request, token: str, dish_id: int) -> HTMLRes
     dish = _get_dish_or_404(dish_id)
     if dish.event_id != event.id:
         raise HTTPException(status_code=404, detail="Dish not found")
+    tag_groups = load_tag_groups()
+    tag_kw_map = {
+        tag.id: tag.keywords for _, tags in tag_groups for tag in tags if tag.keywords
+    }
+    hidden_count = sum(1 for _, tags in tag_groups for tag in tags if tag.is_hidden)
     return templates.TemplateResponse(
         request,
         "manage_edit_dish.html",
@@ -634,7 +602,9 @@ def manage_edit_dish_form(request: Request, token: str, dish_id: int) -> HTMLRes
             "event": event,
             "dish": dish,
             "dish_types": event.dish_types,
-            "tag_groups": load_tag_groups(),
+            "tag_groups": tag_groups,
+            "tag_keywords_json": json.dumps(tag_kw_map),
+            "hidden_tag_count": hidden_count,
         },
     )
 
@@ -647,7 +617,6 @@ def manage_edit_dish_submit(
     contributor: str = Form(..., min_length=1, max_length=80),
     dish_name: str = Form(..., min_length=1, max_length=120),
     dish_type: str = Form(...),
-    allergens: Optional[str] = Form(None),
     notes: Optional[str] = Form(None),
     dietary_tags: List[int] = Form(default=[]),
 ) -> RedirectResponse:
@@ -670,8 +639,6 @@ def manage_edit_dish_submit(
                 "contributor": contributor.strip(),
                 "dish_name": dish_name.strip(),
                 "dish_type": dish_type,
-                "allergens": _parse_allergens(allergens),
-                "dietary_flags": [tag.name for tag in tags],
                 "tag_ids": [tag.id for tag in tags],
                 "tags": tags,
                 "notes": notes.strip() if notes else None,
@@ -830,7 +797,9 @@ def add_tag_action(
 ) -> RedirectResponse:
     config = get_config()
     _check_admin_access(request, config)
-    keywords = [kw.strip() for kw in (tag_keywords or "").split(",") if kw.strip()]
+    keywords: List[str] = [
+        kw.strip() for kw in (tag_keywords or "").split(",") if kw.strip()
+    ]
     try:
         create_tag(
             tag_name,
@@ -841,6 +810,14 @@ def add_tag_action(
     except ValueError as exc:
         return _redirect_to_admin_tags(request, error=str(exc))
     return _redirect_to_admin_tags(request, success="Tag added")
+
+
+@app.post(f"{ADMIN_PATH}/tags/reset")
+def reset_tags_action(request: Request) -> RedirectResponse:
+    config = get_config()
+    _check_admin_access(request, config)
+    reset_tags_to_defaults()
+    return _redirect_to_admin_tags(request, success="Tag library reset to defaults")
 
 
 @app.post(f"{ADMIN_PATH}/tags/{{tag_id}}")
@@ -854,7 +831,9 @@ def update_tag_action(
 ) -> RedirectResponse:
     config = get_config()
     _check_admin_access(request, config)
-    keyword_list = [kw.strip() for kw in (keywords or "").split(",") if kw.strip()]
+    keyword_list: List[str] = [
+        kw.strip() for kw in (keywords or "").split(",") if kw.strip()
+    ]
     try:
         update_tag(
             tag_id,
@@ -866,14 +845,6 @@ def update_tag_action(
     except ValueError as exc:
         return _redirect_to_admin_tags(request, error=str(exc))
     return _redirect_to_admin_tags(request, success="Tag updated")
-
-
-@app.post(f"{ADMIN_PATH}/tags/reset")
-def reset_tags_action(request: Request) -> RedirectResponse:
-    config = get_config()
-    _check_admin_access(request, config)
-    reset_tags_to_defaults()
-    return _redirect_to_admin_tags(request, success="Tag library reset to defaults")
 
 
 @app.post(f"{ADMIN_PATH}/tags/{{tag_id}}/delete")

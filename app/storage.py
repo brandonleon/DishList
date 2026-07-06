@@ -18,8 +18,9 @@ import re
 import secrets
 import sqlite3
 import string
+from contextlib import contextmanager
 from datetime import date, datetime, timezone
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, Generator, List, Optional, Sequence, Tuple
 
 from .config import AppConfig, DATA_DIR
 from .models import DishEntry, Event, Tag
@@ -231,12 +232,6 @@ DEFAULT_TAG_KEYWORDS: Dict[str, List[str]] = {
     "Best served warm": ["best served warm", "best warm", "serve warm"],
     "Reheat: air fryer": ["air fryer", "airfryer"],
 }
-CATEGORY_NORMALIZATION = {
-    # Legacy category renames — keeps existing rows tidy on upgrade
-    "Vegetarian but not vegan (contains eggs/honey)": "Dietary preferences",
-    "Lactose-free (distinct from dairy-free)": "Ingredient avoidances",
-}
-
 _SLUG_ALPHABET = string.ascii_lowercase + string.digits
 
 
@@ -256,12 +251,20 @@ def _generate_management_token() -> str:
     return secrets.token_urlsafe(32)
 
 
-def _get_connection() -> sqlite3.Connection:
+@contextmanager
+def _get_connection() -> Generator[sqlite3.Connection, None, None]:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
-    return conn
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def init_db() -> None:
@@ -302,8 +305,6 @@ def init_db() -> None:
                 contributor TEXT NOT NULL,
                 dish_name TEXT NOT NULL,
                 dish_type TEXT NOT NULL,
-                allergens TEXT NOT NULL,
-                dietary_flags TEXT NOT NULL,
                 notes TEXT,
                 is_host_item INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL,
@@ -477,6 +478,7 @@ def create_event(
             ),
         )
         event_id = cursor.lastrowid
+        assert event_id is not None
 
     parsed_date = None
     if event_date:
@@ -577,17 +579,12 @@ def delete_event(event_id: int) -> None:
 
 def _row_to_entry(row: sqlite3.Row, tags: Optional[List[Tag]] = None) -> DishEntry:
     tag_list = tags or []
-    dietary_flags = (
-        [tag.name for tag in tag_list] if tag_list else json.loads(row["dietary_flags"])
-    )
     return DishEntry(
         id=row["id"],
         event_id=row["event_id"],
         contributor=row["contributor"],
         dish_name=row["dish_name"],
         dish_type=row["dish_type"],
-        allergens=json.loads(row["allergens"]),
-        dietary_flags=dietary_flags,
         tag_ids=[tag.id for tag in tag_list],
         tags=tag_list,
         notes=row["notes"],
@@ -653,8 +650,8 @@ def load_dishes_for_event(event_id: int) -> List[DishEntry]:
     with _get_connection() as conn:
         rows = conn.execute(
             """
-            SELECT id, event_id, contributor, dish_name, dish_type, allergens,
-                   dietary_flags, notes, is_host_item, created_at
+            SELECT id, event_id, contributor, dish_name, dish_type,
+                   notes, is_host_item, created_at
             FROM dishes
             WHERE event_id = ?
             ORDER BY is_host_item DESC, datetime(created_at) ASC, id ASC
@@ -670,8 +667,8 @@ def load_all_dishes() -> List[DishEntry]:
     with _get_connection() as conn:
         rows = conn.execute(
             """
-            SELECT id, event_id, contributor, dish_name, dish_type, allergens,
-                   dietary_flags, notes, is_host_item, created_at
+            SELECT id, event_id, contributor, dish_name, dish_type,
+                   notes, is_host_item, created_at
             FROM dishes
             ORDER BY datetime(created_at) DESC, id DESC
             """
@@ -684,8 +681,8 @@ def get_dish(dish_id: int) -> Optional[DishEntry]:
     with _get_connection() as conn:
         row = conn.execute(
             """
-            SELECT id, event_id, contributor, dish_name, dish_type, allergens,
-                   dietary_flags, notes, is_host_item, created_at
+            SELECT id, event_id, contributor, dish_name, dish_type,
+                   notes, is_host_item, created_at
             FROM dishes WHERE id = ?
             """,
             (dish_id,),
@@ -699,23 +696,22 @@ def add_dish(entry: DishEntry) -> int:
     with _get_connection() as conn:
         cursor = conn.execute(
             """
-            INSERT INTO dishes (event_id, contributor, dish_name, dish_type, allergens,
-                                dietary_flags, notes, is_host_item, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO dishes (event_id, contributor, dish_name, dish_type,
+                                notes, is_host_item, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 entry.event_id,
                 entry.contributor,
                 entry.dish_name,
                 entry.dish_type,
-                json.dumps(entry.allergens),
-                json.dumps(entry.dietary_flags),
                 entry.notes,
                 1 if entry.is_host_item else 0,
                 entry.created_at.isoformat(),
             ),
         )
         dish_id = cursor.lastrowid
+        assert dish_id is not None
         _replace_dish_tags(conn, dish_id, entry.tag_ids)
     return dish_id
 
@@ -725,16 +721,13 @@ def update_dish(dish_id: int, entry: DishEntry) -> None:
         conn.execute(
             """
             UPDATE dishes
-            SET contributor = ?, dish_name = ?, dish_type = ?, allergens = ?,
-                dietary_flags = ?, notes = ?, created_at = ?
+            SET contributor = ?, dish_name = ?, dish_type = ?, notes = ?, created_at = ?
             WHERE id = ?
             """,
             (
                 entry.contributor,
                 entry.dish_name,
                 entry.dish_type,
-                json.dumps(entry.allergens),
-                json.dumps(entry.dietary_flags),
                 entry.notes,
                 entry.created_at.isoformat(),
                 dish_id,
@@ -952,6 +945,7 @@ def create_tag(
             (cleaned_name, cat, next_position, 1 if is_hidden else 0),
         )
         tag_id = cursor.lastrowid
+        assert tag_id is not None
         kw_list: List[str] = []
         if keywords:
             kw_list = [kw.strip().lower() for kw in keywords if kw.strip()]
@@ -1113,6 +1107,7 @@ def _seed_or_migrate_config_entries(conn: sqlite3.Connection) -> None:
     _bulk_insert_config_entries(
         conn, CONFIG_CATEGORY_ADMIN_NETWORKS, defaults.admin_networks, timestamp
     )
+    _bulk_insert_config_entries(conn, CONFIG_CATEGORY_WEB_ADMIN, ["false"], timestamp)
 
 
 def _seed_or_migrate_tags(conn: sqlite3.Connection) -> None:
@@ -1120,7 +1115,6 @@ def _seed_or_migrate_tags(conn: sqlite3.Connection) -> None:
         _insert_default_tags(conn)
     else:
         _add_missing_default_tags(conn)
-    _normalize_existing_tag_categories(conn)
 
 
 def _add_missing_default_tags(conn: sqlite3.Connection) -> None:
@@ -1145,6 +1139,7 @@ def _add_missing_default_tags(conn: sqlite3.Connection) -> None:
             (name, category, row["mp"] + 1, 1 if is_hidden else 0),
         )
         tag_id = cursor.lastrowid
+        assert tag_id is not None
         kws = DEFAULT_TAG_KEYWORDS.get(name, [])
         if kws:
             _set_tag_keywords_conn(conn, tag_id, kws)
@@ -1160,6 +1155,7 @@ def _insert_default_tags(conn: sqlite3.Connection) -> None:
                 (name, category, position),
             )
             tag_id = cursor.lastrowid
+            assert tag_id is not None
             kws = DEFAULT_TAG_KEYWORDS.get(name, [])
             if kws:
                 _set_tag_keywords_conn(conn, tag_id, kws)
@@ -1174,6 +1170,7 @@ def _insert_default_tags(conn: sqlite3.Connection) -> None:
                 (name, category, row["mp"] + 1),
             )
             tag_id = cursor.lastrowid
+            assert tag_id is not None
             kws = DEFAULT_TAG_KEYWORDS.get(name, [])
             if kws:
                 _set_tag_keywords_conn(conn, tag_id, kws)
@@ -1191,26 +1188,9 @@ def _seed_or_migrate_keywords(conn: sqlite3.Connection) -> None:
         "count"
     ]
     if count > 0:
-        return  # Already seeded
+        return
     tag_rows = conn.execute("SELECT id, name FROM tags").fetchall()
     for row in tag_rows:
         kws = DEFAULT_TAG_KEYWORDS.get(row["name"], [])
         if kws:
             _set_tag_keywords_conn(conn, row["id"], kws)
-
-
-def _normalize_existing_tag_categories(conn: sqlite3.Connection) -> None:
-    for name, desired_category in CATEGORY_NORMALIZATION.items():
-        row = conn.execute(
-            "SELECT id, category FROM tags WHERE name = ?", (name,)
-        ).fetchone()
-        if not row or row["category"] == desired_category:
-            continue
-        pos_row = conn.execute(
-            "SELECT COALESCE(MAX(position), -1) AS max_position FROM tags WHERE category = ?",
-            (desired_category,),
-        ).fetchone()
-        conn.execute(
-            "UPDATE tags SET category = ?, position = ? WHERE id = ?",
-            (desired_category, pos_row["max_position"] + 1, row["id"]),
-        )

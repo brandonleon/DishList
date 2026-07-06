@@ -14,13 +14,13 @@ import re
 import sys
 import urllib.request
 
-import markdown
+import markdown  # type: ignore
 
 HERE = pathlib.Path(__file__).parent
 
 _VERSION = "0.2"
 _RAW_BASE = "https://gist.githubusercontent.com/brandonleon/d408efca8a6652edfbc449286f694978/raw"
-_SCRIPT_RAW_URL   = f"{_RAW_BASE}/build.py"
+_SCRIPT_RAW_URL = f"{_RAW_BASE}/build.py"
 _TEMPLATE_RAW_URL = f"{_RAW_BASE}/_template.html"
 
 
@@ -66,7 +66,11 @@ def read_project_name() -> str:
         import tomllib  # Python 3.11+
     except ImportError:
         # Python < 3.11: parse just the name field with regex
-        m = re.search(r'^name\s*=\s*["\'](.+?)["\']', toml_path.read_text(encoding="utf-8"), re.MULTILINE)
+        m = re.search(
+            r'^name\s*=\s*["\'](.+?)["\']',
+            toml_path.read_text(encoding="utf-8"),
+            re.MULTILINE,
+        )
         return m.group(1) if m else "Docs"
     with open(toml_path, "rb") as fh:
         return tomllib.load(fh).get("project", {}).get("name", "Docs")
@@ -91,7 +95,7 @@ def build() -> None:
 
     project = read_project_name()
     md_text = md_path.read_text(encoding="utf-8")
-    title   = extract_title(md_text)
+    title = extract_title(md_text)
 
     md = markdown.Markdown(
         extensions=["toc", "fenced_code", "tables"],
@@ -107,8 +111,7 @@ def build() -> None:
 
     template = template_path.read_text(encoding="utf-8")
     output = (
-        template
-        .replace("{{ title }}", title)
+        template.replace("{{ title }}", title)
         .replace("{{ project }}", project)
         .replace("{{ toc }}", toc_html)
         .replace("{{ content }}", content_html)

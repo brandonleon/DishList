@@ -1,5 +1,7 @@
 """Unit tests for event and dish storage."""
 
+from typing import Optional
+
 from app.storage import (
     create_event,
     delete_event,
@@ -14,33 +16,32 @@ from app.storage import (
     create_tag,
     get_tags_by_ids,
 )
-from app.models import DishEntry
+from app.models import DishEntry, Event
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
 
-def _make_event(**kwargs):
-    defaults = dict(
-        name="Test Potluck",
-        description=None,
-        event_date=None,
-        host_name="The Host",
-        dish_types=["Main", "Side", "Dessert"],
+def _make_event(**kwargs) -> Event:
+    return create_event(
+        name=kwargs.get("name", "Test Potluck"),
+        description=kwargs.get("description", None),
+        event_date=kwargs.get("event_date", None),
+        host_name=kwargs.get("host_name", "The Host"),
+        dish_types=kwargs.get("dish_types", ["Main", "Side", "Dessert"]),
+        use_random_slug=kwargs.get("use_random_slug", False),
     )
-    defaults.update(kwargs)
-    return create_event(**defaults)
 
 
-def _make_dish(event_id, **kwargs):
-    defaults = dict(
-        event_id=event_id,
-        contributor="Alice",
-        dish_name="Pasta",
-        dish_type="Main",
+def _make_dish(event_id: int, **kwargs) -> int:
+    return add_dish(
+        DishEntry(
+            event_id=event_id,
+            contributor=kwargs.get("contributor", "Alice"),
+            dish_name=kwargs.get("dish_name", "Pasta"),
+            dish_type=kwargs.get("dish_type", "Main"),
+        )
     )
-    defaults.update(kwargs)
-    return add_dish(DishEntry(**defaults))
 
 
 # ── Events ─────────────────────────────────────────────────────────────────────
@@ -106,6 +107,7 @@ class TestUpdateEvent:
             is_active=True,
         )
         fetched = get_event_by_slug(event.slug)
+        assert fetched is not None
         assert fetched.name == "New Name"
 
     def test_deactivate(self):
@@ -120,6 +122,7 @@ class TestUpdateEvent:
             is_active=False,
         )
         fetched = get_event_by_slug(event.slug)
+        assert fetched is not None
         assert fetched.is_active is False
 
 
@@ -165,6 +168,7 @@ class TestAddDish:
         event = _make_event()
         dish_id = _make_dish(event.id, dish_name="Lasagne", contributor="Bob")
         dish = get_dish(dish_id)
+        assert dish is not None
         assert dish.dish_name == "Lasagne"
         assert dish.contributor == "Bob"
 
@@ -181,6 +185,7 @@ class TestAddDish:
             )
         )
         dish = get_dish(dish_id)
+        assert dish is not None
         assert tag.id in dish.tag_ids
 
     def test_host_item_flag(self):
@@ -195,6 +200,7 @@ class TestAddDish:
             )
         )
         dish = get_dish(dish_id)
+        assert dish is not None
         assert dish.is_host_item is True
 
 
