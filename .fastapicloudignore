@@ -1,0 +1,8 @@
+# Not needed to run DishList on FastAPI Cloud (in addition to .gitignore).
+tests/
+docs/
+openspec/
+data/
+Dockerfile
+docker-compose.yml
+Justfile

@@ -8,25 +8,23 @@ DishList is a self-hosted potluck coordinator. The host creates an event, shares
 
 ```bash
 uv sync
-uv run dishlist serve          # with live reload
-
-# or directly with Uvicorn
-uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
+docker compose up -d postgres   # local PostgreSQL on 127.0.0.1:5432
+export DATABASE_URL=postgresql://dishlist:dishlist@127.0.0.1:5432/dishlist
+uv run dishlist db upgrade      # create or upgrade the schema
+uv run dishlist serve           # with live reload
 ```
+
+DishList stores everything in PostgreSQL, named by the `DATABASE_URL` environment variable. Every `dishlist` command and the server itself use it. Run `dishlist db upgrade` whenever you pull a new version: the server refuses to start until the schema is current.
 
 Visit <http://127.0.0.1:8000> to open DishList.
 
-### Docker
+### Docker Compose
 
 ```bash
-docker build -t dishlist .
-
-docker run -d --name dishlist -p 8000:8000 \
-  -v "$(pwd)/data:/app/data" \
-  dishlist
+docker compose up --build --detach
 ```
 
-Mount `data/` so the database and config persist between container restarts. Override the port with `-e PORT=8080`.
+Compose runs two services: `postgres` (data kept in the `pgdata` volume) and `dishlist`, which applies pending migrations with `dishlist db upgrade` and then starts the server. Set `POSTGRES_PASSWORD` in the environment or a `.env` file to change the default database password, and `PORT` to change the published port.
 
 A `Justfile` is included for server deployments:
 
@@ -39,25 +37,66 @@ just ps       # container status
 
 DishList is designed to run behind a reverse proxy such as Nginx Proxy Manager. It automatically trusts `X-Forwarded-Proto` and `X-Forwarded-For` headers, so HTTPS links and redirects work correctly without extra configuration.
 
+By default those headers are trusted from any address. If the container is reachable by anything other than your proxy, restrict it to the proxy's address (comma-separated IPs) with the `FORWARDED_ALLOW_IPS` environment variable or `dishlist serve --forwarded-allow-ips`. The option wins over the variable. For example, in `docker-compose.yml`:
+
+```yaml
+environment:
+  FORWARDED_ALLOW_IPS: "172.18.0.1"
+```
+
+#### Upgrading
+
+Back up the database, then deploy as usual. The container runs `dishlist db upgrade` before it starts serving.
+
+```bash
+docker compose exec postgres pg_dump -U dishlist dishlist > dishlist-backup.sql
+just deploy
+```
+
+**Upgrading from 0.5.x or earlier:** 0.6.0 moves from SQLite to PostgreSQL and does **not** import the old `data/dishlist.db`. Events, dishes and settings start fresh. Keep the old file (`cp data/dishlist.db data/dishlist-0.5.db.bak`) if you may want to roll back, and re-run any `dishlist admin` settings (web admin, networks, metrics) after the upgrade.
+
 #### Admin commands in Docker
 
-Run `dishlist admin` commands against the running container with `docker exec`, or as a one-shot using the same data volume:
+Run `dishlist admin` commands inside the app container, which already has `DATABASE_URL` set:
 
 ```bash
 # Status check
-docker exec dishlist dishlist admin status
+docker compose exec dishlist dishlist admin status
 
-# Enable web admin and add your IP (against running container)
-docker exec dishlist dishlist admin web enable --network 192.168.1.5
-
-# Same thing as a one-shot (container doesn't need to be running)
-docker run --rm \
-  -v "$(pwd)/data:/app/data" \
-  dishlist dishlist admin web enable --network 192.168.1.5
+# Enable web admin and add your IP
+docker compose exec dishlist dishlist admin web enable --network 192.168.1.5
 ```
 
-> Always mount the same `data/` volume so CLI changes are written to the
-> same `dishlist.db` and `config.json` the server is using.
+Settings changed from the CLI reach the running server within about 5 seconds; no restart or reload is needed.
+
+### FastAPI Cloud
+
+DishList deploys to [FastAPI Cloud](https://fastapicloud.com) with a [Neon](https://neon.tech) PostgreSQL database. FastAPI Cloud finds the app through `[tool.fastapi]` in `pyproject.toml` and ignores the paths listed in `.fastapicloudignore`.
+
+Neon gives you two connection strings. The app uses the **pooled** one (its host contains `-pooler`); migrations and admin commands use the **direct** one.
+
+```bash
+# 1. Create or upgrade the schema (run before every deploy that adds a migration)
+DATABASE_URL="<neon direct url>" uv run dishlist db upgrade
+
+# 2. Tell the app where its database is (once)
+uv run fastapi cloud env set --secret DATABASE_URL "<neon pooled url>"
+
+# 3. Deploy
+uv run fastapi deploy
+```
+
+If step 1 is skipped, the new deployment fails its startup check and the previous one keeps serving.
+
+Manage settings from your own machine by pointing the CLI at Neon:
+
+```bash
+DATABASE_URL="<neon direct url>" uv run dishlist admin web enable --network <your-ip>
+```
+
+Every running instance picks up the change within about 5 seconds.
+
+> FastAPI Cloud starts the app itself, so `dishlist serve` options such as `--forwarded-allow-ips` don't apply there. Check that the admin and metrics IP allowlists see your real address before relying on them.
 
 ---
 
@@ -129,7 +168,7 @@ Your management dashboard (`/manage/{token}`) lets you:
 
 - **Edit event details** — name, date, description, host name, and dish categories.
 - **Toggle submissions open/closed** — close the event to stop accepting new dishes.
-- **Add or remove host contributions** — pin or unpin house dishes at any time.
+- **Add, edit, or remove host contributions** — pin, fix, or unpin house dishes at any time.
 - **Edit or delete any guest dish** — fix typos, update categories, or remove a dish.
 
 > **Keep your management link safe.** Anyone with it can edit your event. It is not displayed on the guest board.
@@ -228,10 +267,17 @@ When the web panel is enabled, it provides:
 ## Troubleshooting
 
 **I lost my management link.**
-Retrieve it from the database:
+Find the event's ID, then print its management path:
 ```bash
-sqlite3 data/dishlist.db "SELECT name, management_token FROM events;"
+dishlist admin events list
+dishlist admin events token <event_id>
 ```
+
+**The server won't start: "Database schema is at …, but this release needs …".**
+The database hasn't been migrated for this version. Run `dishlist db upgrade` with the same `DATABASE_URL`.
+
+**`DATABASE_URL must be set`.**
+Every `dishlist` command needs the database URL. Export it (see *Installation & startup*) or run the command inside the container with `docker compose exec dishlist …`.
 
 **`/pantry-admin` returns 404.**
 The web admin panel is disabled. Enable it with:
@@ -255,4 +301,4 @@ Run `uv run dishlist serve --no-reload` or set `DISHLIST_RELOAD=0`. Some environ
 Auto-suggest is a convenience helper — guests can uncheck any tag before submitting. Tags can be renamed or removed via `dishlist admin tags`.
 
 **Running behind a reverse proxy (Nginx, Caddy, etc.) and seeing mixed-content warnings or broken search.**
-DishList trusts `X-Forwarded-Proto` and `X-Forwarded-For` headers automatically. Make sure your proxy is sending them — Nginx Proxy Manager does by default. If links still generate as `http://`, verify the proxy is correctly forwarding these headers to port 8000.
+DishList trusts `X-Forwarded-Proto` and `X-Forwarded-For` headers automatically. Make sure your proxy is sending them — Nginx Proxy Manager does by default. If links still generate as `http://`, verify the proxy is correctly forwarding these headers to port 8000 and that the proxy's address is allowed by `FORWARDED_ALLOW_IPS` (see above).

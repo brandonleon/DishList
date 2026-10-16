@@ -1,5 +1,8 @@
-## ADDED Requirements
+# dietary-tags Specification
 
+## Purpose
+Provides a shared library of dietary and allergen tags that guests attach to dishes, with keyword auto-suggest and administrator controls.
+## Requirements
 ### Requirement: Dietary tags are grouped by category with a defined order
 The system SHALL organize dietary tags into categories (e.g. "Dietary preferences", "Allergen warnings", "Content & serving") and SHALL preserve a per-tag `position` for display ordering within a category. Tags SHALL be shared across all events rather than scoped per event.
 
@@ -25,9 +28,14 @@ The system SHALL support an `is_hidden` flag per tag. Hidden tags SHALL be exclu
 The system SHALL let an administrator create, update, and delete tags, and SHALL support resetting the entire tag library back to a built-in default set. A reset SHALL clear dietary-tag associations from every dish.
 
 #### Scenario: Duplicate tag rejected
-- **WHEN** an admin tries to create or rename a tag to a name that already exists in that category
+- **WHEN** an admin tries to create or rename a tag to a name that already exists anywhere in the tag library (compared case-insensitively, regardless of category)
 - **THEN** the system rejects the change with a validation error and leaves the tag library unchanged
 
-#### Scenario: Reset requires explicit confirmation
+#### Scenario: Reset replaces all tags and clears associations
 - **WHEN** the tag library is reset to defaults (via CLI or web admin)
 - **THEN** all tags are replaced with the defaults and every dish's tag associations are cleared
+
+#### Scenario: Reset is confirmed before it runs
+- **WHEN** an operator starts a reset from the CLI or from the web admin form
+- **THEN** the CLI asks for interactive confirmation and the web admin form asks for browser-side confirmation before the reset is submitted
+

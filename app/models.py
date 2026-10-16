@@ -2,25 +2,24 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
-from typing import List, Optional
+from datetime import UTC, date, datetime
 
 from pydantic import BaseModel, Field
 
 
 def _current_utc() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class DishEntry(BaseModel):
-    id: Optional[int] = None
-    event_id: Optional[int] = None
+    id: int | None = None
+    event_id: int | None = None
     contributor: str = Field(..., min_length=1, max_length=80)
     dish_name: str = Field(..., min_length=1, max_length=120)
     dish_type: str
-    tag_ids: List[int] = Field(default_factory=list)
-    tags: List["Tag"] = Field(default_factory=list)
-    notes: Optional[str] = None
+    tag_ids: list[int] = Field(default_factory=list)
+    tags: list[Tag] = Field(default_factory=list)
+    notes: str | None = None
     is_host_item: bool = False
     created_at: datetime = Field(default_factory=_current_utc)
 
@@ -30,7 +29,7 @@ class Tag(BaseModel):
     name: str
     category: str
     position: int
-    keywords: List[str] = Field(default_factory=list)
+    keywords: list[str] = Field(default_factory=list)
     is_hidden: bool = False
 
 
@@ -39,9 +38,9 @@ class Event(BaseModel):
     slug: str
     management_token: str
     name: str = Field(..., min_length=1, max_length=120)
-    description: Optional[str] = None
-    event_date: Optional[date] = None
+    description: str | None = None
+    event_date: date | None = None
     host_name: str = Field(default="The House", min_length=1, max_length=80)
-    dish_types: List[str] = Field(default_factory=list)
+    dish_types: list[str] = Field(default_factory=list)
     is_active: bool = True
     created_at: datetime = Field(default_factory=_current_utc)

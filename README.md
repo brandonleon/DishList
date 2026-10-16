@@ -13,17 +13,19 @@ A self-hosted potluck planner. Create an event, share the link, and let guests l
 - **CLI admin** — full `dishlist` command-line tool for managing configuration, tags, networks, and events without a browser
 - **Web admin** — optional `/pantry-admin` panel (disabled by default; enable via CLI)
 - **Prometheus metrics** — optional `/metrics` endpoint with its own IP allowlist (disabled by default; enable via CLI)
-- **SQLite storage** — single `data/dishlist.db` file, trivial to back up or mount in Docker
+- **PostgreSQL storage** — a local container for development and self-hosting, or Neon on FastAPI Cloud; schema managed by versioned migrations
 
 ## Getting started
 
 ```bash
 uv sync
-uv run dishlist serve          # local dev with live reload
-
-# or run Uvicorn directly
-uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
+docker compose up -d postgres   # local PostgreSQL on 127.0.0.1:5432
+export DATABASE_URL=postgresql://dishlist:dishlist@127.0.0.1:5432/dishlist
+uv run dishlist db upgrade      # create or upgrade the schema
+uv run dishlist serve           # local dev with live reload
 ```
+
+DishList stores everything in PostgreSQL, named by the `DATABASE_URL` environment variable. Every `dishlist` command and the server itself use it. Run `dishlist db upgrade` whenever you pull a new version: the server refuses to start until the schema is current.
 
 Visit <http://127.0.0.1:8000> and hit **Create an Event** to get started.
 
@@ -58,8 +60,6 @@ dishlist admin tags reset               Reset tag library to built-in defaults
 dishlist admin events list              List all events
 dishlist admin events delete <id>       Delete an event and all its dishes
 
-dishlist admin reload                   Reload config in the running server
-
 dishlist admin metrics status           Show /metrics endpoint status
 dishlist admin metrics enable           Enable the Prometheus /metrics endpoint
 dishlist admin metrics enable --network IP
@@ -91,22 +91,13 @@ dishlist admin web disable
 
 When disabled, `/pantry-admin` returns 404.
 
-## Reloading configuration
+## Configuration changes
 
-After any `dishlist admin` command that changes settings, the running server
-needs to pick up the new config. You can do this without a full restart:
-
-```bash
-# Signal the running server to reload (writes data/dishlist.pid on startup)
-dishlist admin reload
-
-# Or click "Reload config" in the /pantry-admin web panel
-```
-
-The `reload` command sends `SIGUSR1` to the server process identified by
-`data/dishlist.pid`. If the PID file is absent (server not running, or
-started without the PID being written) the command exits with a clear error.
-The equivalent web button appears at the top of the `/pantry-admin` page.
+Every running server re-reads its configuration from the database every few
+seconds, so changes made with `dishlist admin` (locally, in a container, or
+against a remote `DATABASE_URL`) take effect everywhere within about 5 seconds,
+with no restart. The **Reload config** button in `/pantry-admin` applies them to
+that server immediately.
 
 ## Prometheus metrics
 
@@ -133,23 +124,15 @@ allowlist get 403. Exposed metrics include `dishlist_http_requests_total`,
 `dishlist_http_request_duration_seconds`, `dishlist_events_total`, and
 `dishlist_dishes_total`.
 
-## Docker
-
-```bash
-docker build -t dishlist .
-
-docker run -d --name dishlist -p 8000:8000 \
-  -v "$(pwd)/data:/app/data" \
-  dishlist
-```
-
-Mount `data/` to persist the database and config between runs. Override the port with `-e PORT=8080`.
-
-### Docker Compose
+## Docker Compose
 
 ```bash
 docker compose up --build --detach
 ```
+
+This starts PostgreSQL (data in the `pgdata` volume) and DishList, which runs
+`dishlist db upgrade` before serving. Override the published port with `PORT`
+and the database password with `POSTGRES_PASSWORD`.
 
 A `Justfile` is included for server-side deployments:
 
@@ -168,27 +151,22 @@ Ensure your proxy passes the standard forwarded headers. Nginx Proxy Manager doe
 
 ### Admin commands in Docker
 
-Run any `dishlist admin` command against a running container by exec-ing into it — or as a one-shot against the same data volume:
+Run any `dishlist admin` command inside the app container, which already has `DATABASE_URL` set:
 
 ```bash
-# Check status
-docker exec dishlist dishlist admin status
-
-# Enable web admin and whitelist your IP
-docker exec dishlist dishlist admin web enable --network 192.168.1.5
-
-# Or as a one-shot (no running container needed)
-docker run --rm \
-  -v "$(pwd)/data:/app/data" \
-  dishlist dishlist admin web enable --network 192.168.1.5
-
-# Any other admin subcommand works the same way
-docker exec dishlist dishlist admin tags list
-docker exec dishlist dishlist admin events list
+docker compose exec dishlist dishlist admin status
+docker compose exec dishlist dishlist admin web enable --network 192.168.1.5
+docker compose exec dishlist dishlist admin events list
 ```
 
-> The data volume must be mounted so CLI changes are written to the same
-> `dishlist.db` and `config.json` the server is reading.
+## FastAPI Cloud
+
+DishList also deploys to [FastAPI Cloud](https://fastapicloud.com) with a
+[Neon](https://neon.tech) database. In short: run
+`DATABASE_URL=<neon direct url> uv run dishlist db upgrade`, set the pooled URL
+with `uv run fastapi cloud env set --secret DATABASE_URL "<neon pooled url>"`,
+then `uv run fastapi deploy`. See the [user guide](docs/index.md#fastapi-cloud)
+for the full steps.
 
 ## URL structure
 
@@ -218,7 +196,7 @@ Manage tags via `dishlist admin tags` or through the web admin panel.
 
 ## Data
 
-| File | Contents |
-|---|---|
-| `data/dishlist.db` | All events, dishes, and tags (SQLite) |
-| `data/config.json` | Dish types, admin IP allowlist, web admin toggle |
+All events, dishes, tags and settings live in the PostgreSQL database named by
+`DATABASE_URL`. The schema is defined by the Alembic migrations in
+`app/migrations/`; apply them with `dishlist db upgrade`. Back up with
+`pg_dump`, e.g. `docker compose exec postgres pg_dump -U dishlist dishlist > backup.sql`.

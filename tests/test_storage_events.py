@@ -1,23 +1,20 @@
 """Unit tests for event and dish storage."""
 
-from typing import Optional
-
+from app.models import DishEntry, Event
 from app.storage import (
+    add_dish,
     create_event,
+    create_tag,
+    delete_dish,
     delete_event,
+    get_dish,
     get_event_by_management_token,
     get_event_by_slug,
+    get_tags_by_ids,
+    load_dishes_for_event,
     load_events,
     update_event,
-    add_dish,
-    delete_dish,
-    get_dish,
-    load_dishes_for_event,
-    create_tag,
-    get_tags_by_ids,
 )
-from app.models import DishEntry, Event
-
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -25,8 +22,8 @@ from app.models import DishEntry, Event
 def _make_event(**kwargs) -> Event:
     return create_event(
         name=kwargs.get("name", "Test Potluck"),
-        description=kwargs.get("description", None),
-        event_date=kwargs.get("event_date", None),
+        description=kwargs.get("description"),
+        event_date=kwargs.get("event_date"),
         host_name=kwargs.get("host_name", "The Host"),
         dish_types=kwargs.get("dish_types", ["Main", "Side", "Dessert"]),
         use_random_slug=kwargs.get("use_random_slug", False),

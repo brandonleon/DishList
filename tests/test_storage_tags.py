@@ -3,21 +3,20 @@
 import pytest
 
 from app.storage import (
+    DEFAULT_HIDDEN_TAG_GROUPS,
+    DEFAULT_TAG_GROUPS,
+    DEFAULT_TAG_KEYWORDS,
+    TAG_CATEGORY_ORDER,
     create_tag,
     delete_tag,
     get_tag_counts,
-    load_tags,
     load_tag_groups,
+    load_tags,
     reset_tags_to_defaults,
     set_tag_keywords,
     toggle_tag_visibility,
     update_tag,
-    DEFAULT_TAG_GROUPS,
-    DEFAULT_HIDDEN_TAG_GROUPS,
-    DEFAULT_TAG_KEYWORDS,
-    TAG_CATEGORY_ORDER,
 )
-
 
 # ── Default seeding ────────────────────────────────────────────────────────────
 
@@ -98,11 +97,11 @@ class TestCreateTag:
             create_tag("Unique", "Content & serving")
 
     def test_create_empty_name_raises(self):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="name cannot be empty"):
             create_tag("", "Dietary preferences")
 
     def test_create_empty_category_raises(self):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="Category cannot be empty"):
             create_tag("Something", "")
 
     def test_created_tag_appears_in_load_tags(self):
@@ -172,7 +171,7 @@ class TestToggleVisibility:
         assert updated.is_hidden is False
 
     def test_toggle_invalid_id_raises(self):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="Tag not found"):
             toggle_tag_visibility(999999)
 
 

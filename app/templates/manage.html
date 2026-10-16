@@ -16,6 +16,8 @@
   </div>
 </div>
 
+{% include "partials/flash.html" %}
+
 {% set all_dishes = host_dishes + guest_dishes %}
 {% set total_dishes = all_dishes | length %}
 {% set palette = ['#8FBCBB', '#5E81AC', '#A3BE8C', '#B48EAD', '#88C0D0', '#BF616A', '#EBCB8B'] %}
@@ -204,10 +206,14 @@
                   <td><span class="badge tag-pill tag-pill-house">House</span></td>
                   <td class="text-muted small">House item</td>
                   <td class="text-end">
-                    <form method="post" action="{{ url_for('delete_host_item', token=event.management_token, dish_id=dish.id) }}"
-                          onsubmit="return confirm('Remove this item?');">
-                      <button type="submit" class="btn btn-sm btn-outline-danger">Remove</button>
-                    </form>
+                    <div class="d-flex justify-content-end gap-2">
+                      <a class="btn btn-sm btn-outline-secondary"
+                         href="{{ url_for('manage_edit_dish_form', token=event.management_token, dish_id=dish.id) }}">Edit</a>
+                      <form method="post" action="{{ url_for('delete_host_item', token=event.management_token, dish_id=dish.id) }}"
+                            onsubmit="return confirm('Remove this item?');">
+                        <button type="submit" class="btn btn-sm btn-outline-danger">Remove</button>
+                      </form>
+                    </div>
                   </td>
                 </tr>
               {% endfor %}

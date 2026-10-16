@@ -7,12 +7,12 @@ The system SHALL grant access to `/manage/{token}` based solely on possession of
 - **WHEN** a request is made to `/manage/{token}` with a token that matches no event
 - **THEN** the system responds with HTTP 404
 
-### Requirement: Host dashboard shows event dishes and supports flash messages
-The system SHALL render, on `GET /manage/{token}`, the event's host-contributed dishes, guest-contributed dishes, and the full dietary tag library, and SHALL display success/error flash messages passed via `flash_success`/`flash_error` query parameters.
+### Requirement: Host dashboard shows event dishes
+The system SHALL render, on `GET /manage/{token}`, the event's host-contributed dishes, guest-contributed dishes, and the full dietary tag library. The route SHALL read the `flash_success` and `flash_error` query parameters and pass them to the template context.
 
-#### Scenario: Flash message rendered from query params
-- **WHEN** `GET /manage/{token}?flash_success=Saved` is requested
-- **THEN** the dashboard renders the success message "Saved"
+#### Scenario: Dishes split by contributor type
+- **WHEN** `GET /manage/{token}` is requested for an event with both host and guest dishes
+- **THEN** host-contributed dishes and guest-contributed dishes are provided to the template as separate lists
 
 ### Requirement: Host can add and delete host-contributed dishes
 The system SHALL let the host add dishes via `POST /manage/{token}/host-items` (name, a dish type from the event's configured types, optional notes) and delete them via `POST /manage/{token}/host-items/{dish_id}/delete`.

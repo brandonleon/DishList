@@ -1,12 +1,12 @@
 """Integration tests for the FastAPI routes via TestClient."""
 
-import pytest
 from datetime import datetime
 from unittest.mock import MagicMock
 
+import pytest
+
 from app.config import AppConfig
 from app.storage import load_tags
-
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -24,6 +24,34 @@ def _create_event(client, name="Test Potluck", dish_types="Main\nSide\nDessert")
     assert resp.status_code == 303
     token = resp.headers["location"].split("/manage/")[1]
     return token
+
+
+def _event_with_host_dish(client):
+    from app.storage import get_event_by_management_token, load_dishes_for_event
+
+    token = _create_event(client)
+    client.post(
+        f"/manage/{token}/host-items",
+        data={"dish_name": "Turkey", "dish_type": "Side"},
+    )
+    event = get_event_by_management_token(token)
+    assert event is not None
+    host_dish = next(d for d in load_dishes_for_event(event.id) if d.is_host_item)
+    return token, event, host_dish
+
+
+def _event_with_guest_dish(client):
+    from app.storage import get_event_by_management_token, load_dishes_for_event
+
+    token = _create_event(client)
+    event = get_event_by_management_token(token)
+    assert event is not None
+    client.post(
+        f"/e/{event.slug}/add",
+        data={"contributor": "Alice", "dish_name": "Pasta", "dish_type": "Main"},
+    )
+    guest_dish = next(d for d in load_dishes_for_event(event.id) if not d.is_host_item)
+    return token, event, guest_dish
 
 
 # ── Landing & create ───────────────────────────────────────────────────────────
@@ -254,7 +282,8 @@ class TestHelperFunctions:
             ),
         ]
         result = _filter_dishes(dishes, "pasta")
-        assert len(result) == 1 and result[0].dish_name == "Pasta"
+        assert len(result) == 1
+        assert result[0].dish_name == "Pasta"
 
     def test_is_ip_allowed_matching_network(self):
         from app.main import _is_ip_allowed
@@ -279,6 +308,7 @@ class TestHelperFunctions:
 
     def test_check_admin_access_disabled_raises_404(self):
         from fastapi import HTTPException
+
         from app.main import _check_admin_access
 
         req = MagicMock()
@@ -290,6 +320,7 @@ class TestHelperFunctions:
 
     def test_check_admin_access_forbidden_ip_raises_403(self):
         from fastapi import HTTPException
+
         from app.main import _check_admin_access
 
         req = MagicMock()
@@ -488,6 +519,83 @@ class TestManageSubRoutes:
             },
         )
         assert resp.status_code == 400
+
+    def test_add_host_item_blank_name_400(self, client):
+        token = _create_event(client)
+        resp = client.post(
+            f"/manage/{token}/host-items",
+            data={"dish_name": "   ", "dish_type": "Side"},
+        )
+        assert resp.status_code == 400
+
+    def test_edit_guest_dish_blank_contributor_400_and_page_still_loads(self, client):
+        token, _event, guest_dish = _event_with_guest_dish(client)
+        resp = client.post(
+            f"/manage/{token}/dishes/{guest_dish.id}",
+            data={"contributor": "  ", "dish_name": "Ham", "dish_type": "Side"},
+        )
+        assert resp.status_code == 400
+        assert client.get(f"/manage/{token}").status_code == 200
+
+    def test_edit_guest_dish_missing_contributor_400(self, client):
+        token, _event, guest_dish = _event_with_guest_dish(client)
+        resp = client.post(
+            f"/manage/{token}/dishes/{guest_dish.id}",
+            data={"dish_name": "Ham", "dish_type": "Side"},
+        )
+        assert resp.status_code == 400
+
+    def test_edit_guest_dish_form_still_shows_contributor_and_tags(self, client):
+        token, _event, guest_dish = _event_with_guest_dish(client)
+        resp = client.get(f"/manage/{token}/dishes/{guest_dish.id}")
+        assert resp.status_code == 200
+        assert 'name="contributor"' in resp.text
+        assert 'id="edit-dietary-tags"' in resp.text
+
+    def test_edit_dish_blank_name_400(self, client):
+        token, _event, guest_dish = _event_with_guest_dish(client)
+        resp = client.post(
+            f"/manage/{token}/dishes/{guest_dish.id}",
+            data={"contributor": "Alice", "dish_name": "   ", "dish_type": "Side"},
+        )
+        assert resp.status_code == 400
+
+    def test_manage_page_offers_edit_for_host_items(self, client):
+        token, _event, host_dish = _event_with_host_dish(client)
+        html = client.get(f"/manage/{token}").text
+        assert f"/manage/{token}/dishes/{host_dish.id}" in html
+
+    def test_edit_host_dish_form_hides_contributor_and_tags(self, client):
+        token, _event, host_dish = _event_with_host_dish(client)
+        resp = client.get(f"/manage/{token}/dishes/{host_dish.id}")
+        assert resp.status_code == 200
+        assert 'name="contributor"' not in resp.text
+        assert 'id="edit-dietary-tags"' not in resp.text
+        assert "The Host" in resp.text
+
+    def test_edit_host_dish_updates_name_type_notes_only(self, client):
+        from app.storage import load_dishes_for_event
+
+        token, event, host_dish = _event_with_host_dish(client)
+        resp = client.post(
+            f"/manage/{token}/dishes/{host_dish.id}",
+            data={
+                "dish_name": "  Smoked Ham ",
+                "dish_type": "Main",
+                "notes": "Hickory",
+                "contributor": "Someone Else",  # ignored for house dishes
+            },
+            follow_redirects=False,
+        )
+        assert resp.status_code == 303
+        updated = next(
+            d for d in load_dishes_for_event(event.id) if d.id == host_dish.id
+        )
+        assert updated.dish_name == "Smoked Ham"
+        assert updated.dish_type == "Main"
+        assert updated.notes == "Hickory"
+        assert updated.contributor == host_dish.contributor == "The Host"
+        assert updated.is_host_item is True
 
     def test_delete_host_item_redirects(self, client):
         token = _create_event(client)
@@ -820,6 +928,54 @@ class TestAdminReloadEndpoint:
         assert "10.0.0.0/8" in app.state.config.metrics_networks
 
 
+class TestConfigRefresh:
+    """Config changed elsewhere (CLI, another instance) reaches this instance."""
+
+    def _age_cache(self, app):
+        from app.main import CONFIG_REFRESH_SECONDS
+
+        app.state.config_loaded_at -= CONFIG_REFRESH_SECONDS + 1
+
+    def test_out_of_band_change_applies_after_refresh_interval(self, client):
+        from app.config import AppConfig, save_config
+        from app.main import app
+
+        assert client.get("/pantry-admin").status_code == 404
+        save_config(AppConfig(web_admin_enabled=True, admin_networks=["127.0.0.1/32"]))
+        # Still within the refresh interval: the cached config is served.
+        assert client.get("/pantry-admin").status_code == 404
+        self._age_cache(app)
+        assert client.get("/pantry-admin").status_code == 200
+
+    def test_disabling_on_another_instance_reaches_this_one(self, client):
+        from app.config import AppConfig, save_config
+        from app.main import app
+
+        save_config(AppConfig(web_admin_enabled=True, admin_networks=["127.0.0.1/32"]))
+        self._age_cache(app)
+        assert client.get("/pantry-admin").status_code == 200
+        save_config(AppConfig(web_admin_enabled=False))
+        self._age_cache(app)
+        assert client.get("/pantry-admin").status_code == 404
+
+    def test_admin_save_applies_immediately(self, client):
+        from app.config import AppConfig, save_config
+        from app.main import app
+
+        save_config(AppConfig(web_admin_enabled=True, admin_networks=["127.0.0.1/32"]))
+        self._age_cache(app)
+        resp = client.post(
+            "/pantry-admin",
+            data={
+                "dish_types_input": "Soup",
+                "admin_networks_input": "127.0.0.1/32",
+            },
+            follow_redirects=False,
+        )
+        assert resp.status_code == 303
+        assert app.state.config.dish_types == ["Soup"]
+
+
 # ── Prometheus metrics endpoint ───────────────────────────────────────────────
 
 
@@ -875,3 +1031,258 @@ class TestMetricsEndpoint:
         # The landing route should have been recorded with status 200.
         assert 'path="/"' in body
         assert 'status="200"' in body
+
+
+# ── Blank / oversized input must never be saved ───────────────────────────────
+
+
+class TestBlankInputRejected:
+    def test_guest_add_blank_contributor_400(self, client):
+        token = _create_event(client)
+        from app.storage import get_event_by_management_token, load_dishes_for_event
+
+        event = get_event_by_management_token(token)
+        assert event is not None
+        resp = client.post(
+            f"/e/{event.slug}/add",
+            data={"contributor": "   ", "dish_name": "Pasta", "dish_type": "Main"},
+        )
+        assert resp.status_code == 400
+        assert load_dishes_for_event(event.id) == []
+
+    def test_guest_add_blank_dish_name_400(self, client):
+        token = _create_event(client)
+        from app.storage import get_event_by_management_token, load_dishes_for_event
+
+        event = get_event_by_management_token(token)
+        assert event is not None
+        resp = client.post(
+            f"/e/{event.slug}/add",
+            data={"contributor": "Alice", "dish_name": "\t ", "dish_type": "Main"},
+        )
+        assert resp.status_code == 400
+        assert load_dishes_for_event(event.id) == []
+
+    def test_create_event_blank_name_400_and_nothing_saved(self, client):
+        from app.storage import load_events
+
+        resp = client.post(
+            "/create",
+            data={"name": "   ", "dish_types_input": "Main", "host_name": "Host"},
+            follow_redirects=False,
+        )
+        assert resp.status_code == 400
+        assert load_events() == []
+
+    def test_settings_blank_name_400_and_event_still_loads(self, client):
+        token = _create_event(client)
+        resp = client.post(
+            f"/manage/{token}",
+            data={"name": "   ", "dish_types_input": "Main", "host_name": "H"},
+            follow_redirects=False,
+        )
+        assert resp.status_code == 400
+        page = client.get(f"/manage/{token}")
+        assert page.status_code == 200
+        assert "Test Potluck" in page.text
+
+    def test_create_event_overlong_host_name_rejected(self, client):
+        from app.storage import load_events
+
+        resp = client.post(
+            "/create",
+            data={
+                "name": "Party",
+                "dish_types_input": "Main",
+                "host_name": "h" * 81,
+            },
+            follow_redirects=False,
+        )
+        assert resp.status_code == 422
+        assert load_events() == []
+
+    def test_settings_overlong_host_name_rejected_and_event_still_loads(self, client):
+        token = _create_event(client)
+        resp = client.post(
+            f"/manage/{token}",
+            data={
+                "name": "Party",
+                "dish_types_input": "Main",
+                "host_name": "h" * 81,
+            },
+            follow_redirects=False,
+        )
+        assert resp.status_code == 422
+        assert client.get(f"/manage/{token}").status_code == 200
+
+
+# ── Renaming the host updates house dishes ────────────────────────────────────
+
+
+class TestHostRename:
+    def _setup(self, client):
+        from app.storage import get_event_by_management_token
+
+        token = _create_event(client)  # host_name = "The Host"
+        event = get_event_by_management_token(token)
+        assert event is not None
+        client.post(
+            f"/manage/{token}/host-items",
+            data={"dish_name": "Turkey", "dish_type": "Main"},
+        )
+        client.post(
+            f"/e/{event.slug}/add",
+            data={"contributor": "Alice", "dish_name": "Pasta", "dish_type": "Main"},
+        )
+        return token, event
+
+    def _rename(self, client, token, host_name):
+        return client.post(
+            f"/manage/{token}",
+            data={
+                "name": "Test Potluck",
+                "dish_types_input": "Main\nSide\nDessert",
+                "host_name": host_name,
+                "is_active": "1",
+            },
+            follow_redirects=False,
+        )
+
+    def test_rename_updates_house_dishes_only(self, client):
+        from app.storage import load_dishes_for_event
+
+        token, event = self._setup(client)
+        assert self._rename(client, token, "The Smokehouse").status_code == 303
+        dishes = {d.dish_name: d for d in load_dishes_for_event(event.id)}
+        assert dishes["Turkey"].contributor == "The Smokehouse"
+        assert dishes["Pasta"].contributor == "Alice"
+
+    def test_blank_host_name_falls_back_and_updates_house_dishes(self, client):
+        from app.storage import load_dishes_for_event
+
+        token, event = self._setup(client)
+        self._rename(client, token, "   ")
+        dishes = {d.dish_name: d for d in load_dishes_for_event(event.id)}
+        assert dishes["Turkey"].contributor == "The House"
+
+    def test_rename_does_not_touch_other_events(self, client):
+        from app.storage import get_event_by_management_token, load_dishes_for_event
+
+        token, _event = self._setup(client)
+        other_token = _create_event(client, name="Other Party")
+        other = get_event_by_management_token(other_token)
+        assert other is not None
+        client.post(
+            f"/manage/{other_token}/host-items",
+            data={"dish_name": "Ham", "dish_type": "Main"},
+        )
+        self._rename(client, token, "The Smokehouse")
+        assert load_dishes_for_event(other.id)[0].contributor == "The Host"
+
+    def test_same_name_is_a_noop(self, client):
+        from app.storage import load_dishes_for_event
+
+        token, event = self._setup(client)
+        before = [d.model_dump() for d in load_dishes_for_event(event.id)]
+        self._rename(client, token, "The Host")
+        assert [d.model_dump() for d in load_dishes_for_event(event.id)] == before
+
+
+# ── Error presentation ────────────────────────────────────────────────────────
+
+BROWSER = {"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"}
+
+
+class TestErrorPages:
+    def _bad_host_item(self, client, token, headers=None):
+        return client.post(
+            f"/manage/{token}/host-items",
+            data={"dish_name": "   ", "dish_type": "Side"},
+            headers=headers or {},
+        )
+
+    def test_browser_gets_html_with_status_and_message(self, client):
+        token = _create_event(client)
+        resp = self._bad_host_item(client, token, BROWSER)
+        assert resp.status_code == 400
+        assert resp.headers["content-type"].startswith("text/html")
+        assert "Dish name is required" in resp.text
+        assert 'href="http://testserver/"' in resp.text
+
+    def test_default_accept_keeps_json(self, client):
+        token = _create_event(client)
+        resp = self._bad_host_item(client, token)
+        assert resp.status_code == 400
+        assert resp.json() == {"detail": "Dish name is required"}
+
+    def test_explicit_json_accept_keeps_json(self, client):
+        resp = client.get("/e/no-such-event", headers={"Accept": "application/json"})
+        assert resp.status_code == 404
+        assert "detail" in resp.json()
+
+    def test_json_listed_before_html_stays_json(self, client):
+        resp = client.get(
+            "/e/no-such-event",
+            headers={"Accept": "application/json, text/html;q=0.5"},
+        )
+        assert resp.status_code == 404
+        assert resp.headers["content-type"].startswith("application/json")
+
+    def test_browser_404_is_html(self, client):
+        resp = client.get("/e/no-such-event", headers=BROWSER)
+        assert resp.status_code == 404
+        assert resp.headers["content-type"].startswith("text/html")
+
+    def test_message_markup_is_escaped(self, client):
+        from fastapi import HTTPException
+
+        from app.main import app
+
+        @app.get("/_test_boom")
+        def _boom():
+            raise HTTPException(status_code=400, detail="<script>alert(1)</script>")
+
+        try:
+            resp = client.get("/_test_boom", headers=BROWSER)
+        finally:
+            app.router.routes[:] = [
+                r for r in app.router.routes if getattr(r, "path", "") != "/_test_boom"
+            ]
+        assert resp.status_code == 400
+        assert "<script>alert(1)</script>" not in resp.text
+        assert "&lt;script&gt;alert(1)&lt;/script&gt;" in resp.text
+
+    def test_browser_validation_error_is_html_422(self, client):
+        resp = client.post(
+            "/create",
+            data={"name": "P", "dish_types_input": "Main", "host_name": "h" * 81},
+            headers=BROWSER,
+        )
+        assert resp.status_code == 422
+        assert resp.headers["content-type"].startswith("text/html")
+        assert "host_name" in resp.text
+
+    def test_validation_error_default_accept_keeps_json(self, client):
+        resp = client.post(
+            "/create",
+            data={"name": "P", "dish_types_input": "Main", "host_name": "h" * 81},
+        )
+        assert resp.status_code == 422
+        assert isinstance(resp.json()["detail"], list)
+
+
+class TestManageFlash:
+    def test_flash_messages_render_escaped(self, client):
+        token = _create_event(client)
+        resp = client.get(
+            f"/manage/{token}",
+            params={"flash_success": "Saved", "flash_error": "<b>bad</b>"},
+        )
+        assert resp.status_code == 200
+        assert "Saved" in resp.text
+        assert "<b>bad</b>" not in resp.text
+        assert "&lt;b&gt;bad&lt;/b&gt;" in resp.text
+
+    def test_no_flash_markup_without_params(self, client):
+        token = _create_event(client)
+        assert 'data-flash="' not in client.get(f"/manage/{token}").text

@@ -1,0 +1,12 @@
+{% if flash_success %}
+  <div class="alert alert-success alert-dismissible" role="alert" data-flash="success">
+    {{ flash_success }}
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+  </div>
+{% endif %}
+{% if flash_error %}
+  <div class="alert alert-danger alert-dismissible" role="alert" data-flash="error">
+    {{ flash_error }}
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+  </div>
+{% endif %}

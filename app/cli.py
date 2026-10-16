@@ -2,7 +2,7 @@
 
 Usage:
     dishlist serve                        Start the web server
-    dishlist admin reload                 Reload config in the running server
+    dishlist db upgrade                   Apply pending database migrations
     dishlist admin status                 Show current configuration
     dishlist admin web enable             Enable /pantry-admin (optionally add a network)
     dishlist admin web disable            Disable /pantry-admin
@@ -25,16 +25,18 @@ Usage:
     dishlist admin metrics networks list  List allowed metrics scrape networks
     dishlist admin metrics networks add <cidr>
     dishlist admin metrics networks remove <cidr>
+
+Every command that touches data uses the PostgreSQL database named by the
+DATABASE_URL environment variable, so a remote deployment can be managed from
+any machine by pointing DATABASE_URL at its database.
 """
 
 from __future__ import annotations
 
 import ipaddress
 import sys
-from typing import Optional
 
 import click
-
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
 
@@ -67,13 +69,24 @@ def _validate_network(value: str) -> str:
         raise click.BadParameter(
             f"'{value}' is not a valid IP address or CIDR range "
             f"(examples: 192.168.1.5  or  10.0.0.0/24)"
-        )
+        ) from None
 
 
 # ── Root ──────────────────────────────────────────────────────────────────────
 
 
-@click.group()
+class _Cli(click.Group):
+    def invoke(self, ctx: click.Context):
+        from app.config import DatabaseNotConfiguredError
+
+        try:
+            return super().invoke(ctx)
+        except DatabaseNotConfiguredError as exc:
+            _err(str(exc))
+            ctx.exit(1)
+
+
+@click.group(cls=_Cli)
 def cli() -> None:
     """DishList — potluck planner management CLI."""
 
@@ -82,21 +95,38 @@ def cli() -> None:
 
 
 @cli.command()
-@click.option("--host", default="0.0.0.0", show_default=True, help="Bind address.")
+@click.option(
+    "--host",
+    default="0.0.0.0",  # noqa: S104 - container-friendly default; binding is the operator's choice
+    show_default=True,
+    help="Bind address.",
+)
 @click.option("--port", default=8000, show_default=True, help="Bind port.")
 @click.option(
     "--reload/--no-reload",
     default=None,
     help="Enable live reload (default: on unless DISHLIST_RELOAD=0).",
 )
-def serve(host: str, port: int, reload: Optional[bool]) -> None:
+@click.option(
+    "--forwarded-allow-ips",
+    default=None,
+    help=(
+        "Comma-separated proxy IPs trusted for X-Forwarded-* headers "
+        "(default: $FORWARDED_ALLOW_IPS, else '*' = trust any proxy)."
+    ),
+)
+def serve(
+    host: str, port: int, reload: bool | None, forwarded_allow_ips: str | None
+) -> None:
     """Start the DishList web server."""
     import os
+
     import uvicorn
 
     if reload is None:
         raw = os.getenv("DISHLIST_RELOAD")
         reload = raw is None or raw.lower() in {"1", "true", "yes", "on"}
+    trusted_proxies = forwarded_allow_ips or os.getenv("FORWARDED_ALLOW_IPS") or "*"
 
     click.echo(f"Starting DishList on http://{host}:{port}")
     try:
@@ -106,7 +136,7 @@ def serve(host: str, port: int, reload: Optional[bool]) -> None:
             port=port,
             reload=reload,
             proxy_headers=True,
-            forwarded_allow_ips="*",
+            forwarded_allow_ips=trusted_proxies,
         )
     except PermissionError:
         if not reload:
@@ -118,8 +148,44 @@ def serve(host: str, port: int, reload: Optional[bool]) -> None:
             port=port,
             reload=False,
             proxy_headers=True,
-            forwarded_allow_ips="*",
+            forwarded_allow_ips=trusted_proxies,
         )
+
+
+# ── db ────────────────────────────────────────────────────────────────────────
+
+
+@cli.group()
+def db() -> None:
+    """Manage the database schema."""
+
+
+@db.command("upgrade")
+def db_upgrade() -> None:
+    """Apply pending schema migrations to the DATABASE_URL database."""
+    from app import migrations
+    from app.config import database_url
+    from app.storage import close_pool, current_schema_revision
+
+    url = database_url()
+    before = current_schema_revision()
+    head = migrations.head_revision()
+    if before == head:
+        _ok(f"Database is already at the latest revision ({head}).")
+        close_pool()
+        return
+    click.echo(f"Upgrading database from {before or 'empty'} to {head}…")
+    try:
+        migrations.upgrade(url)
+    except Exception as exc:  # noqa: BLE001 - report any migration failure, then exit non-zero
+        after = current_schema_revision()
+        close_pool()
+        _err(f"Migration failed: {exc}")
+        click.echo(f"  Database left at revision {after or 'empty'}.", err=True)
+        sys.exit(1)
+    after = current_schema_revision()
+    close_pool()
+    _ok(f"Database upgraded to {after}.")
 
 
 # ── admin ─────────────────────────────────────────────────────────────────────
@@ -128,54 +194,6 @@ def serve(host: str, port: int, reload: Optional[bool]) -> None:
 @cli.group()
 def admin() -> None:
     """Manage DishList configuration."""
-
-
-@admin.command("reload")
-def admin_reload() -> None:
-    """Signal the running server to reload its configuration.
-
-    Sends SIGUSR1 to the server process (identified via data/dishlist.pid).
-    Has no effect if the server is not running — start it with
-    ``dishlist serve``.
-    """
-    import os
-    import signal as _signal
-
-    from app.config import DATA_DIR
-
-    pid_path = DATA_DIR / "dishlist.pid"
-    if not pid_path.exists():
-        _err(
-            "No PID file found. Is the server running?\n"
-            "       Use the web admin Reload button, or restart the server."
-        )
-        sys.exit(1)
-
-    raw = pid_path.read_text().strip()
-    try:
-        pid = int(raw)
-    except ValueError:
-        _err(f"PID file contains unexpected value: {raw!r}")
-        sys.exit(1)
-
-    try:
-        os.kill(pid, _signal.SIGUSR1)
-    except ProcessLookupError:
-        _err(
-            f"No process with PID {pid}. Server may have stopped. Clean up: {pid_path}"
-        )
-        sys.exit(1)
-    except PermissionError:
-        _err(f"No permission to signal PID {pid}.")
-        sys.exit(1)
-    except AttributeError:
-        _err(
-            "SIGUSR1 is not supported on this platform. Use the web admin Reload button."
-        )
-        sys.exit(1)
-
-    _ok(f"Reload signal sent (PID {pid}).")
-    click.echo("  The server will apply the latest configuration immediately.")
 
 
 @admin.command("status")
@@ -255,7 +273,7 @@ def web() -> None:
     metavar="IP_OR_CIDR",
     help="Add an IP or CIDR to the allowlist at the same time.",
 )
-def web_enable(network: Optional[str]) -> None:
+def web_enable(network: str | None) -> None:
     """Enable the web admin panel at /pantry-admin."""
     config = _load()
 
@@ -544,7 +562,7 @@ def metrics_status() -> None:
     metavar="IP_OR_CIDR",
     help="Add an IP or CIDR to the metrics allowlist at the same time.",
 )
-def metrics_enable(network: Optional[str]) -> None:
+def metrics_enable(network: str | None) -> None:
     """Enable the Prometheus /metrics endpoint."""
     config = _load()
 

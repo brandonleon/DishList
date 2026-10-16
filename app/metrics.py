@@ -8,7 +8,7 @@ this collector are wired in `app.main` and gated behind the
 from __future__ import annotations
 
 import time
-from typing import Callable
+from collections.abc import Callable
 
 from prometheus_client import (
     CONTENT_TYPE_LATEST,

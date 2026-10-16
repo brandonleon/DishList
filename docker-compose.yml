@@ -1,22 +1,43 @@
 services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: dishlist
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-dishlist}"
+      POSTGRES_DB: dishlist
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      # Published on localhost only, so `uv run dishlist serve` and the test
+      # suite on the host can reach it without exposing it to the network.
+      - "127.0.0.1:5432:5432"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dishlist -d dishlist"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   dishlist:
     build: .
     ports:
       - "${PORT:-8000}:8000"
-    volumes:
-      # Persist the SQLite database and any config files between restarts.
-      # To migrate to PostgreSQL later, remove this volume and set DATABASE_URL below.
-      - ./data:/app/data
     environment:
       PORT: "8000"
-      # DATABASE_URL is read by storage.py for future PostgreSQL migration.
-      # SQLite (default): leave unset or use sqlite:///data/dishlist.db
-      # PostgreSQL: DATABASE_URL=postgresql://user:password@host:5432/dishlist
-      # DATABASE_URL: ""
+      DATABASE_URL: "postgresql://dishlist:${POSTGRES_PASSWORD:-dishlist}@postgres:5432/dishlist"
+      # Proxy IPs trusted for X-Forwarded-* headers (default "*" = any proxy).
+      # Restrict to your reverse proxy's address if the port is reachable by others.
+      # FORWARDED_ALLOW_IPS: "127.0.0.1"
+    depends_on:
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 10s
+
+volumes:
+  pgdata:

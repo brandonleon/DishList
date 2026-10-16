@@ -223,7 +223,8 @@
           <div class="toc-heading">On this page</div>
           <div class="toc"><span class="toctitle">Contents</span><ul>
 <li><a href="#installation-startup">Installation &amp; startup</a><ul>
-<li><a href="#docker">Docker</a></li>
+<li><a href="#docker-compose">Docker Compose</a></li>
+<li><a href="#fastapi-cloud">FastAPI Cloud</a></li>
 </ul>
 </li>
 <li><a href="#creating-an-event">Creating an event</a></li>
@@ -257,36 +258,62 @@
 <hr />
 <h2 id="installation-startup">Installation &amp; startup</h2>
 <pre><code class="language-bash">uv sync
-uv run dishlist serve          # with live reload
-
-# or directly with Uvicorn
-uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
+docker compose up -d postgres   # local PostgreSQL on 127.0.0.1:5432
+export DATABASE_URL=postgresql://dishlist:dishlist@127.0.0.1:5432/dishlist
+uv run dishlist db upgrade      # create or upgrade the schema
+uv run dishlist serve           # with live reload
 </code></pre>
+<p>DishList stores everything in PostgreSQL, named by the <code>DATABASE_URL</code> environment variable. Every <code>dishlist</code> command and the server itself use it. Run <code>dishlist db upgrade</code> whenever you pull a new version: the server refuses to start until the schema is current.</p>
 <p>Visit <a href="http://127.0.0.1:8000">http://127.0.0.1:8000</a> to open DishList.</p>
-<h3 id="docker">Docker</h3>
-<pre><code class="language-bash">docker build -t dishlist .
-
-docker run -d --name dishlist -p 8000:8000 \
-  -v &quot;$(pwd)/data:/app/data&quot; \
-  dishlist
+<h3 id="docker-compose">Docker Compose</h3>
+<pre><code class="language-bash">docker compose up --build --detach
 </code></pre>
-<p>Mount <code>data/</code> so the database and config persist between container restarts. Override the port with <code>-e PORT=8080</code>.</p>
+<p>Compose runs two services: <code>postgres</code> (data kept in the <code>pgdata</code> volume) and <code>dishlist</code>, which applies pending migrations with <code>dishlist db upgrade</code> and then starts the server. Set <code>POSTGRES_PASSWORD</code> in the environment or a <code>.env</code> file to change the default database password, and <code>PORT</code> to change the published port.</p>
+<p>A <code>Justfile</code> is included for server deployments:</p>
+<pre><code class="language-bash">just deploy   # git pull + docker compose up --build --detach
+just stop     # docker compose down
+just logs     # follow container logs
+just ps       # container status
+</code></pre>
+<p>DishList is designed to run behind a reverse proxy such as Nginx Proxy Manager. It automatically trusts <code>X-Forwarded-Proto</code> and <code>X-Forwarded-For</code> headers, so HTTPS links and redirects work correctly without extra configuration.</p>
+<p>By default those headers are trusted from any address. If the container is reachable by anything other than your proxy, restrict it to the proxy's address (comma-separated IPs) with the <code>FORWARDED_ALLOW_IPS</code> environment variable or <code>dishlist serve --forwarded-allow-ips</code>. The option wins over the variable. For example, in <code>docker-compose.yml</code>:</p>
+<pre><code class="language-yaml">environment:
+  FORWARDED_ALLOW_IPS: &quot;172.18.0.1&quot;
+</code></pre>
+<h4 id="upgrading">Upgrading</h4>
+<p>Back up the database, then deploy as usual. The container runs <code>dishlist db upgrade</code> before it starts serving.</p>
+<pre><code class="language-bash">docker compose exec postgres pg_dump -U dishlist dishlist &gt; dishlist-backup.sql
+just deploy
+</code></pre>
+<p><strong>Upgrading from 0.5.x or earlier:</strong> 0.6.0 moves from SQLite to PostgreSQL and does <strong>not</strong> import the old <code>data/dishlist.db</code>. Events, dishes and settings start fresh. Keep the old file (<code>cp data/dishlist.db data/dishlist-0.5.db.bak</code>) if you may want to roll back, and re-run any <code>dishlist admin</code> settings (web admin, networks, metrics) after the upgrade.</p>
 <h4 id="admin-commands-in-docker">Admin commands in Docker</h4>
-<p>Run <code>dishlist admin</code> commands against the running container with <code>docker exec</code>, or as a one-shot using the same data volume:</p>
+<p>Run <code>dishlist admin</code> commands inside the app container, which already has <code>DATABASE_URL</code> set:</p>
 <pre><code class="language-bash"># Status check
-docker exec dishlist dishlist admin status
+docker compose exec dishlist dishlist admin status
 
-# Enable web admin and add your IP (against running container)
-docker exec dishlist dishlist admin web enable --network 192.168.1.5
-
-# Same thing as a one-shot (container doesn't need to be running)
-docker run --rm \
-  -v &quot;$(pwd)/data:/app/data&quot; \
-  dishlist dishlist admin web enable --network 192.168.1.5
+# Enable web admin and add your IP
+docker compose exec dishlist dishlist admin web enable --network 192.168.1.5
 </code></pre>
+<p>Settings changed from the CLI reach the running server within about 5 seconds; no restart or reload is needed.</p>
+<h3 id="fastapi-cloud">FastAPI Cloud</h3>
+<p>DishList deploys to <a href="https://fastapicloud.com">FastAPI Cloud</a> with a <a href="https://neon.tech">Neon</a> PostgreSQL database. FastAPI Cloud finds the app through <code>[tool.fastapi]</code> in <code>pyproject.toml</code> and ignores the paths listed in <code>.fastapicloudignore</code>.</p>
+<p>Neon gives you two connection strings. The app uses the <strong>pooled</strong> one (its host contains <code>-pooler</code>); migrations and admin commands use the <strong>direct</strong> one.</p>
+<pre><code class="language-bash"># 1. Create or upgrade the schema (run before every deploy that adds a migration)
+DATABASE_URL=&quot;&lt;neon direct url&gt;&quot; uv run dishlist db upgrade
+
+# 2. Tell the app where its database is (once)
+uv run fastapi cloud env set --secret DATABASE_URL &quot;&lt;neon pooled url&gt;&quot;
+
+# 3. Deploy
+uv run fastapi deploy
+</code></pre>
+<p>If step 1 is skipped, the new deployment fails its startup check and the previous one keeps serving.</p>
+<p>Manage settings from your own machine by pointing the CLI at Neon:</p>
+<pre><code class="language-bash">DATABASE_URL=&quot;&lt;neon direct url&gt;&quot; uv run dishlist admin web enable --network &lt;your-ip&gt;
+</code></pre>
+<p>Every running instance picks up the change within about 5 seconds.</p>
 <blockquote>
-<p>Always mount the same <code>data/</code> volume so CLI changes are written to the
-same <code>dishlist.db</code> and <code>config.json</code> the server is using.</p>
+<p>FastAPI Cloud starts the app itself, so <code>dishlist serve</code> options such as <code>--forwarded-allow-ips</code> don't apply there. Check that the admin and metrics IP allowlists see your real address before relying on them.</p>
 </blockquote>
 <hr />
 <h2 id="creating-an-event">Creating an event</h2>
@@ -352,13 +379,16 @@ same <code>dishlist.db</code> and <code>config.json</code> the server is using.<
 - Typing <code>prepared in a gf kitchen</code> selects <em>Prepared in a GF kitchen</em></p>
 <p>Negation phrases are detected and ignored — typing <code>peanut free</code> or <code>dairy-free</code> will <strong>not</strong> select the corresponding allergen tag.</p>
 <p>Guests can adjust any auto-suggested tag freely before submitting.</p>
+<blockquote>
+<p><strong>Need to change your submission?</strong> The guest form doesn't support editing after submission. Ask the event host to update your entry from their management dashboard.</p>
+</blockquote>
 <hr />
 <h2 id="managing-your-event">Managing your event</h2>
 <p>Your management dashboard (<code>/manage/{token}</code>) lets you:</p>
 <ul>
 <li><strong>Edit event details</strong> — name, date, description, host name, and dish categories.</li>
 <li><strong>Toggle submissions open/closed</strong> — close the event to stop accepting new dishes.</li>
-<li><strong>Add or remove host contributions</strong> — pin or unpin house dishes at any time.</li>
+<li><strong>Add, edit, or remove host contributions</strong> — pin, fix, or unpin house dishes at any time.</li>
 <li><strong>Edit or delete any guest dish</strong> — fix typos, update categories, or remove a dish.</li>
 </ul>
 <blockquote>
@@ -450,9 +480,14 @@ dishlist admin web enable
 <hr />
 <h2 id="troubleshooting">Troubleshooting</h2>
 <p><strong>I lost my management link.</strong>
-Retrieve it from the database:</p>
-<pre><code class="language-bash">sqlite3 data/dishlist.db &quot;SELECT name, management_token FROM events;&quot;
+Find the event's ID, then print its management path:</p>
+<pre><code class="language-bash">dishlist admin events list
+dishlist admin events token &lt;event_id&gt;
 </code></pre>
+<p><strong>The server won't start: "Database schema is at …, but this release needs …".</strong>
+The database hasn't been migrated for this version. Run <code>dishlist db upgrade</code> with the same <code>DATABASE_URL</code>.</p>
+<p><strong><code>DATABASE_URL must be set</code>.</strong>
+Every <code>dishlist</code> command needs the database URL. Export it (see <em>Installation &amp; startup</em>) or run the command inside the container with <code>docker compose exec dishlist …</code>.</p>
 <p><strong><code>/pantry-admin</code> returns 404.</strong>
 The web admin panel is disabled. Enable it with:</p>
 <pre><code class="language-bash">dishlist admin web enable --network &lt;your-ip&gt;
@@ -467,6 +502,8 @@ The board uses HTMX partial refreshes on search. A hard browser refresh (<code>C
 Run <code>uv run dishlist serve --no-reload</code> or set <code>DISHLIST_RELOAD=0</code>. Some environments block file-system watchers.</p>
 <p><strong>A tag auto-suggested incorrectly.</strong>
 Auto-suggest is a convenience helper — guests can uncheck any tag before submitting. Tags can be renamed or removed via <code>dishlist admin tags</code>.</p>
+<p><strong>Running behind a reverse proxy (Nginx, Caddy, etc.) and seeing mixed-content warnings or broken search.</strong>
+DishList trusts <code>X-Forwarded-Proto</code> and <code>X-Forwarded-For</code> headers automatically. Make sure your proxy is sending them — Nginx Proxy Manager does by default. If links still generate as <code>http://</code>, verify the proxy is correctly forwarding these headers to port 8000 and that the proxy's address is allowed by <code>FORWARDED_ALLOW_IPS</code> (see above).</p>
           </article>
 
           <footer class="page-footer">

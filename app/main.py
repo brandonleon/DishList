@@ -2,23 +2,27 @@ from __future__ import annotations
 
 import ipaddress
 import json
-import os
-import signal
-from contextlib import asynccontextmanager
-from datetime import datetime, timezone
-from pathlib import Path
-from typing import List, Optional
-from urllib.parse import urlencode
-from importlib import metadata
-
+import time
 import tomllib
+from contextlib import asynccontextmanager
+from datetime import UTC, date, datetime
+from http import HTTPStatus
+from importlib import metadata
+from pathlib import Path
+from urllib.parse import urlencode
 
 from fastapi import FastAPI, Form, HTTPException, Request, status
+from fastapi.exception_handlers import (
+    http_exception_handler,
+    request_validation_exception_handler,
+)
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from .config import AppConfig, DATA_DIR, load_config, save_config
+from .config import AppConfig, load_config, save_config
 from .metrics import (
     DISHES_TOTAL,
     EVENTS_TOTAL,
@@ -28,30 +32,29 @@ from .metrics import (
 from .models import DishEntry, Event
 from .storage import (
     add_dish,
+    check_schema,
+    close_pool,
+    count_dishes,
+    count_events,
     create_event,
     create_tag,
     delete_dish,
     delete_event,
     delete_tag,
     get_dish,
-    get_tag_counts,
-    reset_tags_to_defaults,
-    toggle_tag_visibility,
-    update_tag,
-    count_dishes,
-    count_events,
     get_event_by_management_token,
     get_event_by_slug,
     get_tag_categories,
+    get_tag_counts,
     get_tags_by_ids,
-    count_dishes,
-    count_events,
-    init_db,
     load_dishes_for_event,
     load_events,
     load_tag_groups,
+    reset_tags_to_defaults,
+    toggle_tag_visibility,
     update_dish,
     update_event,
+    update_tag,
 )
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -60,45 +63,27 @@ STATIC_DIR = BASE_DIR / "static"
 
 ADMIN_PATH = "/pantry-admin"
 METRICS_PATH = "/metrics"
-PID_PATH = DATA_DIR / "dishlist.pid"
+# How long an instance serves its cached config before re-reading the database,
+# so changes made elsewhere (CLI, another instance) reach every instance.
+CONFIG_REFRESH_SECONDS = 5.0
+
+
+def _set_config(config: AppConfig) -> None:
+    app.state.config = config
+    app.state.config_loaded_at = time.monotonic()
 
 
 def _do_reload_config() -> None:
     """Force-refresh the in-memory config from the persisted store."""
-    app.state.config = load_config()
-
-
-def _handle_sigusr1(signum, frame) -> None:  # noqa: ANN001
-    """SIGUSR1 handler: reload config without restarting the server."""
-    _do_reload_config()
+    _set_config(load_config())
 
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):  # type: ignore[type-arg]
-    # ── startup ──────────────────────────────────────────────────────────────
-    init_db()
-    app.state.config = load_config()
-    # Write PID so `dishlist admin reload` can signal us.
-    try:
-        DATA_DIR.mkdir(parents=True, exist_ok=True)
-        PID_PATH.write_text(str(os.getpid()))
-    except OSError:  # pragma: no cover
-        pass
-    # Install SIGUSR1 → config reload.
-    # Guards: SIGUSR1 absent on Windows; signal() requires the main thread.
-    try:
-        signal.signal(signal.SIGUSR1, _handle_sigusr1)
-    except (OSError, AttributeError, ValueError):
-        # ValueError: "signal only works in main thread" (e.g. tests)
-        pass
-
+    check_schema()
+    _do_reload_config()
     yield
-
-    # ── shutdown ─────────────────────────────────────────────────────────────
-    try:
-        PID_PATH.unlink(missing_ok=True)
-    except OSError:  # pragma: no cover
-        pass
+    close_pool()
 
 
 app = FastAPI(title="DishList", lifespan=_lifespan)
@@ -120,12 +105,9 @@ def _tag_category_class(category: str) -> str:
 
 
 def _format_dish_timestamp(value: datetime | str) -> str:
-    if isinstance(value, str):
-        parsed = datetime.fromisoformat(value)
-    else:
-        parsed = value
+    parsed = datetime.fromisoformat(value) if isinstance(value, str) else value
     if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
+        parsed = parsed.replace(tzinfo=UTC)
     return parsed.astimezone().strftime("%b %d, %Y %I:%M %p")
 
 
@@ -139,7 +121,7 @@ def _load_app_version() -> str:
                 with pyproject.open("rb") as fh:
                     data = tomllib.load(fh)
                 return data.get("project", {}).get("version", "0.0.0")
-            except Exception:
+            except (OSError, tomllib.TOMLDecodeError):
                 return "0.0.0"
         return "0.0.0"
 
@@ -151,19 +133,70 @@ templates.env.filters["tag_category_class"] = _tag_category_class
 templates.env.globals["app_version"] = APP_VERSION
 
 
+def _prefers_html(request: Request) -> bool:
+    """True when the client lists text/html ahead of application/json."""
+    accept = request.headers.get("accept", "").lower()
+    html_at = accept.find("text/html")
+    if html_at < 0:
+        return False
+    json_at = accept.find("application/json")
+    return json_at < 0 or html_at < json_at
+
+
+def _error_page(
+    request: Request, status_code: int, message: str, headers: dict | None = None
+) -> HTMLResponse:
+    try:
+        phrase = HTTPStatus(status_code).phrase
+    except ValueError:
+        phrase = "Error"
+    return templates.TemplateResponse(
+        request,
+        "error.html",
+        {"status_code": status_code, "status_phrase": phrase, "message": message},
+        status_code=status_code,
+        headers=headers,
+    )
+
+
+@app.exception_handler(StarletteHTTPException)
+async def _http_error_handler(request: Request, exc: StarletteHTTPException):
+    if _prefers_html(request):
+        return _error_page(request, exc.status_code, str(exc.detail), exc.headers)
+    return await http_exception_handler(request, exc)
+
+
+@app.exception_handler(RequestValidationError)
+async def _validation_error_handler(request: Request, exc: RequestValidationError):
+    if _prefers_html(request):
+        problems = "; ".join(
+            f"{'.'.join(str(p) for p in err['loc'][1:]) or err['loc'][0]}: {err['msg']}"
+            for err in exc.errors()
+        )
+        return _error_page(request, 422, problems)
+    return await request_validation_exception_handler(request, exc)
+
+
 def get_config() -> AppConfig:
-    return getattr(app.state, "config", load_config())
+    loaded_at = getattr(app.state, "config_loaded_at", None)
+    if (
+        not hasattr(app.state, "config")
+        or loaded_at is None
+        or time.monotonic() - loaded_at >= CONFIG_REFRESH_SECONDS
+    ):
+        _do_reload_config()
+    return app.state.config
 
 
-def _normalize_tag_ids(raw_ids: List[int]) -> List[int]:
+def _normalize_tag_ids(raw_ids: list[int]) -> list[int]:
     return list(dict.fromkeys(raw_ids))
 
 
-def _filter_dishes(dishes: List[DishEntry], query: str) -> List[DishEntry]:
+def _filter_dishes(dishes: list[DishEntry], query: str) -> list[DishEntry]:
     search = query.strip().lower()
     if not search:
         return dishes
-    filtered: List[DishEntry] = []
+    filtered: list[DishEntry] = []
     for dish in dishes:
         searchable = [
             dish.dish_name,
@@ -192,7 +225,7 @@ def _check_metrics_access(request: Request, config: AppConfig) -> None:
         raise HTTPException(status_code=403, detail="Metrics access restricted")
 
 
-def _is_ip_allowed(request: Request, networks: List[str]) -> bool:
+def _is_ip_allowed(request: Request, networks: list[str]) -> bool:
     client_host = request.client.host if request.client else "127.0.0.1"
     try:
         client_ip = ipaddress.ip_address(client_host)
@@ -205,6 +238,20 @@ def _is_ip_allowed(request: Request, networks: List[str]) -> bool:
         except ValueError:
             continue
     return False
+
+
+def _clean_event_date(raw: str | None) -> str | None:
+    """Return the stripped ISO date, None if blank; 400 if it is not a valid date."""
+    value = (raw or "").strip()
+    if not value:
+        return None
+    try:
+        date.fromisoformat(value)
+    except ValueError:
+        raise HTTPException(
+            status_code=400, detail="Invalid event date format"
+        ) from None
+    return value
 
 
 def _get_event_by_slug_or_404(slug: str) -> Event:
@@ -248,15 +295,17 @@ def create_event_form(request: Request) -> HTMLResponse:
 def create_event_submit(
     request: Request,
     name: str = Form(..., min_length=1, max_length=120),
-    description: Optional[str] = Form(None),
-    event_date: Optional[str] = Form(None),
-    host_name: Optional[str] = Form(None),
+    description: str | None = Form(None),
+    event_date: str | None = Form(None),
+    host_name: str | None = Form(None, max_length=80),
     dish_types_input: str = Form(...),
-    use_random_slug: Optional[str] = Form(None),
-    host_item_names: List[str] = Form(default=[]),
-    host_item_types: List[str] = Form(default=[]),
-    host_item_notes: List[str] = Form(default=[]),
+    use_random_slug: str | None = Form(None),
+    host_item_names: list[str] = Form(default=[]),
+    host_item_types: list[str] = Form(default=[]),
+    host_item_notes: list[str] = Form(default=[]),
 ) -> RedirectResponse:
+    if not name.strip():
+        raise HTTPException(status_code=400, detail="Event name is required")
     dish_types = [
         line.strip() for line in dish_types_input.splitlines() if line.strip()
     ]
@@ -265,16 +314,7 @@ def create_event_submit(
             status_code=400, detail="At least one dish type is required"
         )
 
-    # Validate event_date if provided
-    clean_date: Optional[str] = None
-    if event_date and event_date.strip():
-        try:
-            from datetime import date
-
-            date.fromisoformat(event_date.strip())
-            clean_date = event_date.strip()
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid event date format")
+    clean_date = _clean_event_date(event_date)
 
     event = create_event(
         name=name,
@@ -288,14 +328,13 @@ def create_event_submit(
     )
 
     # Add host contributions
-    for item_name, item_type, item_notes in zip(
-        host_item_names, host_item_types, host_item_notes
+    for raw_name, raw_type, item_notes in zip(
+        host_item_names, host_item_types, host_item_notes, strict=False
     ):
-        item_name = item_name.strip()
+        item_name = raw_name.strip()
         if not item_name:
             continue
-        if item_type not in dish_types:
-            item_type = dish_types[0]
+        item_type = raw_type if raw_type in dish_types else dish_types[0]
         add_dish(
             DishEntry(
                 event_id=event.id,
@@ -323,7 +362,7 @@ def health() -> Response:
     try:
         count_events()
         db_status = "ok"
-    except Exception:
+    except Exception:  # noqa: BLE001 - a health check must report any failure, not raise
         db_status = "error"
 
     overall = "ok" if db_status == "ok" else "degraded"
@@ -412,8 +451,8 @@ def event_add_submission(
     contributor: str = Form(..., min_length=1, max_length=80),
     dish_name: str = Form(..., min_length=1, max_length=120),
     dish_type: str = Form(...),
-    notes: Optional[str] = Form(None),
-    dietary_tags: List[int] = Form(default=[]),
+    notes: str | None = Form(None),
+    dietary_tags: list[int] = Form(default=[]),
 ) -> RedirectResponse:
     event = _get_event_by_slug_or_404(slug)
     if not event.is_active:
@@ -422,6 +461,12 @@ def event_add_submission(
         )
     if dish_type not in event.dish_types:
         raise HTTPException(status_code=400, detail="Unknown dish type")
+    clean_contributor = contributor.strip()
+    clean_name = dish_name.strip()
+    if not clean_contributor or not clean_name:
+        raise HTTPException(
+            status_code=400, detail="Contributor and dish name are required"
+        )
 
     tag_ids = _normalize_tag_ids(dietary_tags)
     tags = get_tags_by_ids(tag_ids)
@@ -431,8 +476,8 @@ def event_add_submission(
     add_dish(
         DishEntry(
             event_id=event.id,
-            contributor=contributor.strip(),
-            dish_name=dish_name.strip(),
+            contributor=clean_contributor,
+            dish_name=clean_name,
             dish_type=dish_type,
             tag_ids=[tag.id for tag in tags],
             tags=tags,
@@ -502,13 +547,15 @@ def update_event_settings(
     request: Request,
     token: str,
     name: str = Form(..., min_length=1, max_length=120),
-    description: Optional[str] = Form(None),
-    event_date: Optional[str] = Form(None),
-    host_name: Optional[str] = Form(None),
+    description: str | None = Form(None),
+    event_date: str | None = Form(None),
+    host_name: str | None = Form(None, max_length=80),
     dish_types_input: str = Form(...),
-    is_active: Optional[str] = Form(None),
+    is_active: str | None = Form(None),
 ) -> RedirectResponse:
     event = _get_event_by_token_or_404(token)
+    if not name.strip():
+        raise HTTPException(status_code=400, detail="Event name is required")
     dish_types = [
         line.strip() for line in dish_types_input.splitlines() if line.strip()
     ]
@@ -517,15 +564,7 @@ def update_event_settings(
             status_code=400, detail="At least one dish type is required"
         )
 
-    clean_date: Optional[str] = None
-    if event_date and event_date.strip():
-        try:
-            from datetime import date
-
-            date.fromisoformat(event_date.strip())
-            clean_date = event_date.strip()
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid event date format")
+    clean_date = _clean_event_date(event_date)
 
     update_event(
         event_id=event.id,
@@ -550,16 +589,19 @@ def add_host_item(
     token: str,
     dish_name: str = Form(..., min_length=1, max_length=120),
     dish_type: str = Form(...),
-    notes: Optional[str] = Form(None),
+    notes: str | None = Form(None),
 ) -> RedirectResponse:
     event = _get_event_by_token_or_404(token)
     if dish_type not in event.dish_types:
         raise HTTPException(status_code=400, detail="Unknown dish type")
+    clean_name = dish_name.strip()
+    if not clean_name:
+        raise HTTPException(status_code=400, detail="Dish name is required")
     add_dish(
         DishEntry(
             event_id=event.id,
             contributor=event.host_name,
-            dish_name=dish_name.strip(),
+            dish_name=clean_name,
             dish_type=dish_type,
             notes=notes.strip() if notes else None,
             is_host_item=True,
@@ -614,11 +656,11 @@ def manage_edit_dish_submit(
     request: Request,
     token: str,
     dish_id: int,
-    contributor: str = Form(..., min_length=1, max_length=80),
+    contributor: str | None = Form(None, max_length=80),
     dish_name: str = Form(..., min_length=1, max_length=120),
     dish_type: str = Form(...),
-    notes: Optional[str] = Form(None),
-    dietary_tags: List[int] = Form(default=[]),
+    notes: str | None = Form(None),
+    dietary_tags: list[int] = Form(default=[]),
 ) -> RedirectResponse:
     event = _get_event_by_token_or_404(token)
     dish = _get_dish_or_404(dish_id)
@@ -626,18 +668,32 @@ def manage_edit_dish_submit(
         raise HTTPException(status_code=404, detail="Dish not found")
     if dish_type not in event.dish_types:
         raise HTTPException(status_code=400, detail="Unknown dish type")
+    clean_name = dish_name.strip()
+    if not clean_name:
+        raise HTTPException(status_code=400, detail="Dish name is required")
 
-    tag_ids = _normalize_tag_ids(dietary_tags)
-    tags = get_tags_by_ids(tag_ids)
-    if len(tags) != len(tag_ids):
-        raise HTTPException(status_code=400, detail="Unknown dietary tag selected")
+    if dish.is_host_item:
+        # House dishes are always attributed to the host and carry no
+        # dietary tags, so the edit form only changes name, type and notes.
+        clean_contributor = dish.contributor
+        tags = dish.tags
+    else:
+        clean_contributor = (contributor or "").strip()
+        if not clean_contributor:
+            raise HTTPException(
+                status_code=400, detail="Contributor and dish name are required"
+            )
+        tag_ids = _normalize_tag_ids(dietary_tags)
+        tags = get_tags_by_ids(tag_ids)
+        if len(tags) != len(tag_ids):
+            raise HTTPException(status_code=400, detail="Unknown dietary tag selected")
 
     update_dish(
         dish_id,
         dish.model_copy(
             update={
-                "contributor": contributor.strip(),
-                "dish_name": dish_name.strip(),
+                "contributor": clean_contributor,
+                "dish_name": clean_name,
                 "dish_type": dish_type,
                 "tag_ids": [tag.id for tag in tags],
                 "tags": tags,
@@ -668,7 +724,7 @@ def manage_delete_dish(request: Request, token: str, dish_id: int) -> RedirectRe
 
 
 def _redirect_to_admin(
-    request: Request, success: Optional[str] = None, error: Optional[str] = None
+    request: Request, success: str | None = None, error: str | None = None
 ) -> RedirectResponse:
     target = str(request.url_for("admin_page"))
     params = {}
@@ -682,7 +738,7 @@ def _redirect_to_admin(
 
 
 def _redirect_to_admin_tags(
-    request: Request, success: Optional[str] = None, error: Optional[str] = None
+    request: Request, success: str | None = None, error: str | None = None
 ) -> RedirectResponse:
     target = str(request.url_for("admin_tags_page"))
     params = {}
@@ -716,7 +772,7 @@ def admin_page(request: Request) -> HTMLResponse:
 
 @app.post(f"{ADMIN_PATH}/reload")
 def reload_config(request: Request) -> RedirectResponse:
-    """Force a config reload from the persisted store into app.state."""
+    """Re-read config from the database now, without waiting for the refresh."""
     config = get_config()
     _check_admin_access(request, config)
     _do_reload_config()
@@ -748,7 +804,7 @@ def update_admin_settings(
     request: Request,
     dish_types_input: str = Form(...),
     admin_networks_input: str = Form(...),
-    metrics_networks_input: Optional[str] = Form(None),
+    metrics_networks_input: str | None = Form(None),
 ) -> RedirectResponse:
     config = get_config()
     _check_admin_access(request, config)
@@ -781,7 +837,7 @@ def update_admin_settings(
         metrics_enabled=config.metrics_enabled,
     )
     save_config(new_config)
-    app.state.config = new_config
+    _set_config(new_config)
     return RedirectResponse(
         url=request.url_for("admin_page"), status_code=status.HTTP_303_SEE_OTHER
     )
@@ -792,12 +848,12 @@ def add_tag_action(
     request: Request,
     tag_name: str = Form(..., min_length=1, max_length=120),
     tag_category: str = Form(...),
-    tag_keywords: Optional[str] = Form(None),
-    tag_is_hidden: Optional[str] = Form(None),  # checkbox: present = hidden
+    tag_keywords: str | None = Form(None),
+    tag_is_hidden: str | None = Form(None),  # checkbox: present = hidden
 ) -> RedirectResponse:
     config = get_config()
     _check_admin_access(request, config)
-    keywords: List[str] = [
+    keywords: list[str] = [
         kw.strip() for kw in (tag_keywords or "").split(",") if kw.strip()
     ]
     try:
@@ -826,12 +882,12 @@ def update_tag_action(
     tag_id: int,
     name: str = Form(...),
     category: str = Form(...),
-    keywords: Optional[str] = Form(None),
-    is_hidden: Optional[str] = Form(None),  # checkbox: present = hidden
+    keywords: str | None = Form(None),
+    is_hidden: str | None = Form(None),  # checkbox: present = hidden
 ) -> RedirectResponse:
     config = get_config()
     _check_admin_access(request, config)
-    keyword_list: List[str] = [
+    keyword_list: list[str] = [
         kw.strip() for kw in (keywords or "").split(",") if kw.strip()
     ]
     try:
