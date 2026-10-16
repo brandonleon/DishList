@@ -78,12 +78,16 @@ def _validate_network(value: str) -> str:
 class _Cli(click.Group):
     def invoke(self, ctx: click.Context):
         from app.config import DatabaseNotConfiguredError
+        from app.storage import close_pool
 
         try:
             return super().invoke(ctx)
         except DatabaseNotConfiguredError as exc:
             _err(str(exc))
             ctx.exit(1)
+        finally:
+            # Release the pool's worker threads, or exit waits ~5s on each.
+            close_pool()
 
 
 @click.group(cls=_Cli)
@@ -165,26 +169,23 @@ def db_upgrade() -> None:
     """Apply pending schema migrations to the DATABASE_URL database."""
     from app import migrations
     from app.config import database_url
-    from app.storage import close_pool, current_schema_revision
+    from app.storage import current_schema_revision
 
     url = database_url()
     before = current_schema_revision()
     head = migrations.head_revision()
     if before == head:
         _ok(f"Database is already at the latest revision ({head}).")
-        close_pool()
         return
     click.echo(f"Upgrading database from {before or 'empty'} to {head}…")
     try:
         migrations.upgrade(url)
     except Exception as exc:  # noqa: BLE001 - report any migration failure, then exit non-zero
         after = current_schema_revision()
-        close_pool()
         _err(f"Migration failed: {exc}")
         click.echo(f"  Database left at revision {after or 'empty'}.", err=True)
         sys.exit(1)
     after = current_schema_revision()
-    close_pool()
     _ok(f"Database upgraded to {after}.")
 
 
