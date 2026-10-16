@@ -80,8 +80,13 @@ def _do_reload_config() -> None:
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):  # type: ignore[type-arg]
-    check_schema()
-    _do_reload_config()
+    try:
+        check_schema()
+        _do_reload_config()
+    except Exception:
+        # Don't leave pool worker threads behind when refusing to start.
+        close_pool()
+        raise
     yield
     close_pool()
 

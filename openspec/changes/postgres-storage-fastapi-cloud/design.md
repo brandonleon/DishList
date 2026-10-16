@@ -31,14 +31,19 @@ Ids become `BIGINT GENERATED ALWAYS AS IDENTITY`; booleans `BOOLEAN`; `created_a
 *Alternative:* keep `TEXT` timestamps to minimise model changes; rejected because a fresh schema with no data to preserve is the cheapest moment to fix types.
 
 **3. Alembic with raw-SQL migrations, run by `dishlist db upgrade`.**
-An `app/migrations/` package holds Alembic revisions written with `op.execute()` SQL. There are no SQLAlchemy models, so autogenerate is not used. Revision `0001_baseline` creates the full current schema and inserts the default dish types, tags and keywords as literal values frozen in the migration, so later edits to the defaults in `storage.py` can't silently change history. Alembic is configured in code (no `alembic.ini`), with the URL passed as a config attribute so a `%` in a password is never interpolated. `env.py` rewrites the scheme to `postgresql+psycopg://` and runs each revision in its own transaction. Living inside the `app` package, the migrations ship wherever the app does. SQLAlchemy is a dependency only because Alembic requires it.
+An `app/migrations/` package holds Alembic revisions written with `op.execute()` SQL. There are no SQLAlchemy models, so autogenerate is not used. Revision `0001_baseline` creates the full current schema and inserts the default dish types, tags and keywords as literal values frozen in the migration, so later edits to the defaults in `storage.py` can't silently change history. Alembic is configured in code (no `alembic.ini`), with the URL passed as a config attribute so a `%` in a password is never interpolated. `env.py` rewrites the scheme to `postgresql+psycopg://` and disables prepared statements so it also works through Neon's pooler. Living inside the `app` package, the migrations ship wherever the app does. SQLAlchemy is a dependency only because Alembic requires it.
 *Alternative:* hand-rolled versioning in `init_db()` with an advisory lock; rejected (user decision) in favour of a standard tool and an explicit step.
 
-**4. Startup checks the schema version but never migrates.**
-`init_db()` becomes `check_schema()`: it reads `alembic_version` and compares it with the script directory's head. If behind or missing, the lifespan raises with a message to run `dishlist db upgrade`. On FastAPI Cloud this means a deploy whose migrations weren't applied fails verification and the previous deployment stays live, rather than serving errors.
+**4. Startup sets up an empty database; otherwise it only checks.**
+`init_db()` becomes `check_schema()`: it reads `alembic_version` and compares it with the script directory's head. If the database has no tables at all, it applies every migration first, so a brand-new database (a fresh Neon branch, a new compose volume) needs no manual step. If the database is behind, or has tables but no `alembic_version`, the lifespan raises with a message to run `dishlist db upgrade`. Startup never runs a schema *change* on a populated database, because during a rollout the old release may still be serving from it. On FastAPI Cloud, a deploy whose migrations weren't applied fails verification and the previous deployment stays live.
+*Alternative:* run all pending migrations at every startup. Rejected for now: only the empty-database case was asked for, and upgrades of live data stay an explicit step.
+
+**4a. Migration runs are serialized and all-or-nothing.**
+Several instances can start against the same empty database at once. `env.py` runs all pending revisions in one transaction that first takes `pg_advisory_xact_lock`; a second run blocks until the first commits, then sees the schema at head and does nothing. A transaction-scoped lock (not a session lock) is used because it also holds through Neon's transaction-mode pooler. The cost is that a failed run rolls back entirely rather than stopping at the last good revision, which Postgres's transactional DDL makes safe.
+
 Where migrations run:
 - **Compose / Docker image:** the container command becomes `dishlist db upgrade && dishlist serve …`. A single self-hosted container makes this safe.
-- **FastAPI Cloud:** the operator runs `DATABASE_URL=<neon direct url> uv run dishlist db upgrade` from their machine before `fastapi deploy`. Migrations use Neon's direct (non-pooler) URL; the app uses the pooled one.
+- **FastAPI Cloud:** the first deploy against a new Neon database sets it up at startup (decision 4). For later releases that add migrations, the operator runs `DATABASE_URL=<neon direct url> uv run dishlist db upgrade` from their machine before `fastapi deploy`.
 
 **5. Config cache with a 5-second refresh.**
 `app.state.config` is replaced by a small cache holding the config and the time it was loaded. The existing `get_config()` accessor in `main.py` reloads from the database when the entry is older than 5 seconds, which sits inside the spec's 10-second bound with margin. Saving through web admin writes to the database and replaces the cache immediately. `POST /pantry-admin/reload` invalidates it. The SIGUSR1 handler, PID file, `dishlist admin reload`, `DATA_DIR`, and the one-time `config.json` import are deleted.
@@ -57,7 +62,8 @@ A `postgres` service (`postgres:17-alpine`) with a named `pgdata` volume, a `pg_
 ## Risks / Trade-offs
 
 - [Self-hosters lose their existing data] → Called out as **BREAKING** in the CHANGELOG and docs; the upgrade steps say to archive `data/dishlist.db` first. Ships in 0.6.0; the SQLite legacy-column migration drafted for 0.6.0 is dropped before release.
-- [Forgetting `dishlist db upgrade` before a cloud deploy] → The startup check fails the deploy and the previous one stays live; the docs' deploy steps list the upgrade first.
+- [Forgetting `dishlist db upgrade` before a cloud deploy that adds a migration] → The startup check fails the deploy and the previous one stays live; the docs' deploy steps list the upgrade first.
+- [Bootstrapping at startup against the wrong, empty database] → It only creates DishList's own tables; a database with any existing table is never touched.
 - [A migration breaks the previous release during rollout] → The schema-migration spec requires expand/contract; reviewers check new migrations against it.
 - [Tests now need a running Postgres] → One command (`docker compose up -d postgres`) in the testing docs; tests skip with an explicit message when it's absent.
 - [Neon cold starts add latency after idle] → Acceptable for a potluck app; the pool's `check` callback reconnects stale connections after Neon suspends compute.
@@ -73,11 +79,9 @@ Self-hosted (`just deploy`):
 4. Rollback: check out v0.5.0 and `just deploy`; the untouched `data/dishlist.db` is used again. Data entered on 0.6.0 is not carried back, and v0.5.0 still has the add-dish 500 on databases created before v0.5.0.
 
 FastAPI Cloud (first deploy):
-1. Create a Neon project; note the pooled and direct connection strings.
-2. `DATABASE_URL=<direct url> uv run dishlist db upgrade`.
-3. `fastapi cloud env set --secret DATABASE_URL "<pooled url>"`.
-4. `fastapi deploy`.
-5. `DATABASE_URL=<direct url> uv run dishlist admin web enable --network <cidr>` if web admin is wanted; verify the allowlist behaviour (see Open Questions).
+1. Connect a Neon database to the app (`fastapi cloud integrations resources connect`); the integration sets `DATABASE_URL`.
+2. `fastapi deploy`. The first instance finds the database empty and applies the migrations.
+3. `DATABASE_URL=<direct url> uv run dishlist admin web enable --network <cidr>` if web admin is wanted; verify the allowlist behaviour (see Open Questions).
 
 ## Open Questions
 

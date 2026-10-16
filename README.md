@@ -162,10 +162,9 @@ docker compose exec dishlist dishlist admin events list
 ## FastAPI Cloud
 
 DishList also deploys to [FastAPI Cloud](https://fastapicloud.com) with a
-[Neon](https://neon.tech) database. In short: run
-`DATABASE_URL=<neon direct url> uv run dishlist db upgrade`, set the pooled URL
-with `uv run fastapi cloud env set --secret DATABASE_URL "<neon pooled url>"`,
-then `uv run fastapi deploy`. See the [user guide](docs/index.md#fastapi-cloud)
+[Neon](https://neon.tech) database. In short: `uv run fastapi deploy`, then
+`uv run fastapi cloud integrations resources connect` to attach a Neon database.
+The first start creates the tables. See the [user guide](docs/index.md#fastapi-cloud)
 for the full steps.
 
 ## URL structure
@@ -198,5 +197,6 @@ Manage tags via `dishlist admin tags` or through the web admin panel.
 
 All events, dishes, tags and settings live in the PostgreSQL database named by
 `DATABASE_URL`. The schema is defined by the Alembic migrations in
-`app/migrations/`; apply them with `dishlist db upgrade`. Back up with
+`app/migrations/`. An empty database is set up on first start; apply later
+migrations with `dishlist db upgrade`. Back up with
 `pg_dump`, e.g. `docker compose exec postgres pg_dump -U dishlist dishlist > backup.sql`.

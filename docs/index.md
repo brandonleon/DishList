@@ -14,7 +14,7 @@ uv run dishlist db upgrade      # create or upgrade the schema
 uv run dishlist serve           # with live reload
 ```
 
-DishList stores everything in PostgreSQL, named by the `DATABASE_URL` environment variable. Every `dishlist` command and the server itself use it. Run `dishlist db upgrade` whenever you pull a new version: the server refuses to start until the schema is current.
+DishList stores everything in PostgreSQL, named by the `DATABASE_URL` environment variable. Every `dishlist` command and the server itself use it. On first start against an empty database the server creates the tables itself. After that, run `dishlist db upgrade` whenever you pull a new version: the server refuses to start until the schema is current.
 
 Visit <http://127.0.0.1:8000> to open DishList.
 
@@ -73,20 +73,24 @@ Settings changed from the CLI reach the running server within about 5 seconds; n
 
 DishList deploys to [FastAPI Cloud](https://fastapicloud.com) with a [Neon](https://neon.tech) PostgreSQL database. FastAPI Cloud finds the app through `[tool.fastapi]` in `pyproject.toml` and ignores the paths listed in `.fastapicloudignore`.
 
-Neon gives you two connection strings. The app uses the **pooled** one (its host contains `-pooler`); migrations and admin commands use the **direct** one.
+First deploy:
 
 ```bash
-# 1. Create or upgrade the schema (run before every deploy that adds a migration)
+uv run fastapi login
+uv run fastapi deploy                                  # creates the app
+uv run fastapi cloud integrations resources connect    # attach a Neon database; sets DATABASE_URL and redeploys
+```
+
+On its first start against the new, empty Neon database, DishList creates its tables and default data. Several instances starting at once is safe: they take turns, and only the first one does the work.
+
+Later releases that add a migration need it applied before deploying. Use Neon's **direct** connection string (host without `-pooler`, from the Neon console's *Connect* dialog):
+
+```bash
 DATABASE_URL="<neon direct url>" uv run dishlist db upgrade
-
-# 2. Tell the app where its database is (once)
-uv run fastapi cloud env set --secret DATABASE_URL "<neon pooled url>"
-
-# 3. Deploy
 uv run fastapi deploy
 ```
 
-If step 1 is skipped, the new deployment fails its startup check and the previous one keeps serving.
+If the upgrade is skipped, the new deployment fails its startup check and the previous one keeps serving.
 
 Manage settings from your own machine by pointing the CLI at Neon:
 
@@ -274,7 +278,7 @@ dishlist admin events token <event_id>
 ```
 
 **The server won't start: "Database schema is at …, but this release needs …".**
-The database hasn't been migrated for this version. Run `dishlist db upgrade` with the same `DATABASE_URL`.
+The database hasn't been migrated for this version. Run `dishlist db upgrade` with the same `DATABASE_URL`. If it says "no migration history", the database already holds tables that aren't DishList's; point `DATABASE_URL` at an empty database instead.
 
 **`DATABASE_URL must be set`.**
 Every `dishlist` command needs the database URL. Export it (see *Installation & startup*) or run the command inside the container with `docker compose exec dishlist …`.

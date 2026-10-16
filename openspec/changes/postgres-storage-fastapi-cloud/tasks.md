@@ -21,6 +21,8 @@
 - [x] 4.1 Replace `_get_connection()` with a lazily created `psycopg_pool.ConnectionPool` (`dict_row`, `prepare_threshold=None`, min 1 / max 5, stale-connection check) and a `close_pool()`/`reset_pool()` pair; fail with a clear error when `DATABASE_URL` is unset
 - [x] 4.2 Port every query: `?` → `%s`, `lastrowid` → `RETURNING id`, drop `PRAGMA`s, `INSERT OR …` → `ON CONFLICT`, audit `LIKE`/case-insensitive matching; update `_row_to_*` for native types
 - [x] 4.3 Replace `init_db()` with `check_schema()` that compares `alembic_version` to head and raises with a `dishlist db upgrade` message; remove the SQLite migration helpers and `_seed_or_migrate_*` startup seeding
+- [x] 4.5 `check_schema()` applies all migrations when the database has no tables; `env.py` runs a migration run in one transaction behind `pg_advisory_xact_lock`; close the pool when startup fails
+- [x] 4.6 Tests: empty database is set up at startup; tables without history refuse to start; three concurrent upgrade processes seed once (verified to fail without the lock)
 - [x] 4.4 Run the full suite green against Postgres (`uv run pytest tests/`)
 
 ## 5. Config and lifespan

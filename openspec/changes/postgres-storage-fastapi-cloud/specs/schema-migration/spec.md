@@ -11,16 +11,31 @@ The database schema SHALL be defined by an ordered series of versioned migration
 - **WHEN** `dishlist db upgrade` is run a second time against the same database
 - **THEN** it reports the database is already current, changes nothing, and exits zero
 
-### Requirement: The server refuses to start against an outdated schema
-On startup the application SHALL compare the database's recorded schema version with the latest version it ships. It SHALL NOT apply migrations itself. If the database is behind, or has never been migrated, startup SHALL fail with an error telling the operator to run `dishlist db upgrade`.
+### Requirement: The server sets up an empty database and refuses an outdated one
+On startup the application SHALL compare the database's recorded schema version with the latest version it ships. If the database is completely empty (no tables and no schema version), the application SHALL apply every migration before serving. Otherwise it SHALL NOT change the schema: if the database is behind, or holds tables without a schema version, startup SHALL fail with an error telling the operator to run `dishlist db upgrade`.
 
-#### Scenario: Server started before migrations were applied
-- **WHEN** the application starts against a database whose schema version is older than the latest, or that has no schema version
-- **THEN** startup fails with a message naming `dishlist db upgrade`, and no request is served
+#### Scenario: First start against an empty database
+- **WHEN** the application starts against a database with no tables
+- **THEN** every migration is applied, the database is at the latest schema version with the default data seeded, and requests are served
+
+#### Scenario: Server started against an outdated schema
+- **WHEN** the application starts against a database whose schema version is older than the latest
+- **THEN** startup fails with a message naming `dishlist db upgrade`, the schema is unchanged, and no request is served
+
+#### Scenario: Tables without migration history
+- **WHEN** the application starts against a database that has tables but no schema version
+- **THEN** startup fails with a message naming `dishlist db upgrade`, and no table is created or changed
 
 #### Scenario: Server started against a current schema
 - **WHEN** the application starts against a database at the latest schema version
 - **THEN** startup proceeds normally
+
+### Requirement: Concurrent migration runs apply each migration once
+When several processes apply migrations to the same database at the same time (for example several instances starting against an empty database), the runs SHALL be serialized so each migration is applied exactly once, and every run SHALL finish successfully with the database at the latest schema version.
+
+#### Scenario: Instances bootstrap the same empty database
+- **WHEN** three processes apply migrations to the same empty database simultaneously
+- **THEN** all three succeed, and the default data is seeded exactly once
 
 ### Requirement: Migrations stay compatible with the previous release during rollout
 Each migration SHALL leave the schema usable by the previous released version of the application, so that old and new instances can serve requests against the same database while a rollout is in progress. Removing or renaming a column or table that the previous release reads or writes SHALL be split across two releases: the code stops using it in one release, and the schema change follows in a later one.

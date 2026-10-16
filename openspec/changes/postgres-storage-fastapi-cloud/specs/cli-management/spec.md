@@ -1,11 +1,11 @@
 ## ADDED Requirements
 
 ### Requirement: CLI applies database migrations
-The `dishlist db upgrade` command SHALL apply pending schema migrations to the database named by `DATABASE_URL`, report the schema version before and after, and exit non-zero if any migration fails, leaving the database at the last version that applied cleanly.
+The `dishlist db upgrade` command SHALL apply pending schema migrations to the database named by `DATABASE_URL`, report the schema version before and after, and exit non-zero if any migration fails. A run SHALL be all-or-nothing: if any migration fails, the database SHALL be left exactly as it was before the command.
 
 #### Scenario: Migration failure
 - **WHEN** a migration raises an error during `dishlist db upgrade`
-- **THEN** the command reports the failing migration and exits non-zero, and the database's recorded version is the last one that completed
+- **THEN** the command reports the error and exits non-zero, and the database's schema and recorded version are unchanged
 
 ### Requirement: CLI commands target the database named by DATABASE_URL
 Every `dishlist` command that reads or writes data SHALL connect to the Postgres database given by the `DATABASE_URL` environment variable, so an operator can manage a remote deployment (for example FastAPI Cloud with Neon) from their own machine. When `DATABASE_URL` is unset or empty, these commands SHALL fail with an error naming the variable instead of falling back to a local file.

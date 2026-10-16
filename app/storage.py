@@ -7,6 +7,7 @@ is owned by the Alembic migrations in ``app/migrations``; apply them with
 
 from __future__ import annotations
 
+import logging
 import re
 import secrets
 import string
@@ -22,6 +23,8 @@ from psycopg_pool import ConnectionPool
 
 from .config import AppConfig, database_url
 from .models import DishEntry, Event, Tag
+
+_log = logging.getLogger(__name__)
 
 Row = dict[str, Any]
 Conn = Connection[Row]
@@ -308,14 +311,37 @@ def current_schema_revision() -> str | None:
     return row["version_num"] if row else None
 
 
-def check_schema() -> None:
-    """Raise unless the database is at the latest migration revision."""
-    from .migrations import head_revision  # noqa: PLC0415 - keeps Alembic off the import path
+def _database_is_empty() -> bool:
+    """True when the current schema has no tables at all."""
+    with _get_connection() as conn:
+        row = conn.execute(
+            """
+            SELECT NOT EXISTS (
+                SELECT 1 FROM pg_tables WHERE schemaname = current_schema()
+            ) AS empty
+            """
+        ).fetchone()
+    return bool(row and row["empty"])
 
+
+def check_schema() -> None:
+    """Make sure the database is at the latest migration revision.
+
+    A completely empty database is set up by applying every migration. A
+    database that is behind, or holds tables without migration history, is
+    never changed here: startup fails and the operator runs
+    ``dishlist db upgrade``.
+    """
+    from . import migrations  # noqa: PLC0415 - keeps Alembic off the import path
+
+    head = migrations.head_revision()
     current = current_schema_revision()
-    head = head_revision()
+    if current is None and _database_is_empty():
+        _log.info("Empty database: applying migrations up to %s", head)
+        migrations.upgrade(database_url())
+        current = current_schema_revision()
     if current != head:
-        found = current or "no schema"
+        found = current or "no migration history"
         raise SchemaOutOfDateError(
             f"Database schema is at {found}, but this release needs {head}. "
             "Run `dishlist db upgrade` against this DATABASE_URL first."

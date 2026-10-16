@@ -263,7 +263,7 @@ export DATABASE_URL=postgresql://dishlist:dishlist@127.0.0.1:5432/dishlist
 uv run dishlist db upgrade      # create or upgrade the schema
 uv run dishlist serve           # with live reload
 </code></pre>
-<p>DishList stores everything in PostgreSQL, named by the <code>DATABASE_URL</code> environment variable. Every <code>dishlist</code> command and the server itself use it. Run <code>dishlist db upgrade</code> whenever you pull a new version: the server refuses to start until the schema is current.</p>
+<p>DishList stores everything in PostgreSQL, named by the <code>DATABASE_URL</code> environment variable. Every <code>dishlist</code> command and the server itself use it. On first start against an empty database the server creates the tables itself. After that, run <code>dishlist db upgrade</code> whenever you pull a new version: the server refuses to start until the schema is current.</p>
 <p>Visit <a href="http://127.0.0.1:8000">http://127.0.0.1:8000</a> to open DishList.</p>
 <h3 id="docker-compose">Docker Compose</h3>
 <pre><code class="language-bash">docker compose up --build --detach
@@ -297,17 +297,17 @@ docker compose exec dishlist dishlist admin web enable --network 192.168.1.5
 <p>Settings changed from the CLI reach the running server within about 5 seconds; no restart or reload is needed.</p>
 <h3 id="fastapi-cloud">FastAPI Cloud</h3>
 <p>DishList deploys to <a href="https://fastapicloud.com">FastAPI Cloud</a> with a <a href="https://neon.tech">Neon</a> PostgreSQL database. FastAPI Cloud finds the app through <code>[tool.fastapi]</code> in <code>pyproject.toml</code> and ignores the paths listed in <code>.fastapicloudignore</code>.</p>
-<p>Neon gives you two connection strings. The app uses the <strong>pooled</strong> one (its host contains <code>-pooler</code>); migrations and admin commands use the <strong>direct</strong> one.</p>
-<pre><code class="language-bash"># 1. Create or upgrade the schema (run before every deploy that adds a migration)
-DATABASE_URL=&quot;&lt;neon direct url&gt;&quot; uv run dishlist db upgrade
-
-# 2. Tell the app where its database is (once)
-uv run fastapi cloud env set --secret DATABASE_URL &quot;&lt;neon pooled url&gt;&quot;
-
-# 3. Deploy
+<p>First deploy:</p>
+<pre><code class="language-bash">uv run fastapi login
+uv run fastapi deploy                                  # creates the app
+uv run fastapi cloud integrations resources connect    # attach a Neon database; sets DATABASE_URL and redeploys
+</code></pre>
+<p>On its first start against the new, empty Neon database, DishList creates its tables and default data. Several instances starting at once is safe: they take turns, and only the first one does the work.</p>
+<p>Later releases that add a migration need it applied before deploying. Use Neon's <strong>direct</strong> connection string (host without <code>-pooler</code>, from the Neon console's <em>Connect</em> dialog):</p>
+<pre><code class="language-bash">DATABASE_URL=&quot;&lt;neon direct url&gt;&quot; uv run dishlist db upgrade
 uv run fastapi deploy
 </code></pre>
-<p>If step 1 is skipped, the new deployment fails its startup check and the previous one keeps serving.</p>
+<p>If the upgrade is skipped, the new deployment fails its startup check and the previous one keeps serving.</p>
 <p>Manage settings from your own machine by pointing the CLI at Neon:</p>
 <pre><code class="language-bash">DATABASE_URL=&quot;&lt;neon direct url&gt;&quot; uv run dishlist admin web enable --network &lt;your-ip&gt;
 </code></pre>
@@ -485,7 +485,7 @@ Find the event's ID, then print its management path:</p>
 dishlist admin events token &lt;event_id&gt;
 </code></pre>
 <p><strong>The server won't start: "Database schema is at …, but this release needs …".</strong>
-The database hasn't been migrated for this version. Run <code>dishlist db upgrade</code> with the same <code>DATABASE_URL</code>.</p>
+The database hasn't been migrated for this version. Run <code>dishlist db upgrade</code> with the same <code>DATABASE_URL</code>. If it says "no migration history", the database already holds tables that aren't DishList's; point <code>DATABASE_URL</code> at an empty database instead.</p>
 <p><strong><code>DATABASE_URL must be set</code>.</strong>
 Every <code>dishlist</code> command needs the database URL. Export it (see <em>Installation &amp; startup</em>) or run the command inside the container with <code>docker compose exec dishlist …</code>.</p>
 <p><strong><code>/pantry-admin</code> returns 404.</strong>

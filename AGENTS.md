@@ -107,7 +107,8 @@ refactors and docs-only changes don't need a spec delta.
 
 Schema changes need a new Alembic revision in `app/migrations/versions/`, written as
 raw SQL with `op.execute()` — databases are upgraded with `dishlist db upgrade`, never
-recreated, and the server refuses to start on an outdated schema. Each revision must
+recreated. The server sets up an empty database on first start but refuses to start on
+an outdated one, so a revision only reaches live data through `dishlist db upgrade`. Each revision must
 keep the previous release working while old and new instances overlap: drop or rename
 a column only in a later release than the one that stops using it (see
 `schema-migration`). Never edit a revision that has shipped.

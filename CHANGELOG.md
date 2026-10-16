@@ -13,9 +13,10 @@ All notable changes to DishList are recorded here. Versions follow
   events, dishes, tags and settings start fresh. Keep a copy
   (`cp data/dishlist.db data/dishlist-0.5.db.bak`) if you may roll back to v0.5.0, and re-run
   your `dishlist admin` settings (web admin, networks, metrics) after upgrading.
-- **BREAKING — schema migrations are an explicit step.** Run `dishlist db upgrade` before
-  starting a new version; the server refuses to start on an outdated schema. The Docker image
-  does this automatically on start.
+- **BREAKING — schema upgrades are an explicit step.** An empty database is set up
+  automatically on first start, but upgrading an existing one needs `dishlist db upgrade`
+  before starting a new version; the server refuses to start on an outdated schema. The Docker
+  image runs the upgrade automatically on start.
 - **BREAKING — `dishlist admin reload` is removed**, along with the `data/dishlist.pid` file
   and the `SIGUSR1` handler. Every server re-reads its configuration from the database every
   few seconds, so CLI changes apply without a reload.
