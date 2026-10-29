@@ -1,0 +1,19 @@
+Thanks, {{ dish.contributor }}! You're bringing {{ dish.dish_name }} ({{ dish.dish_type }}) to "{{ event.name }}".
+{% if dish.notes %}
+
+Notes: {{ dish.notes }}
+{% endif %}
+{% if dish.tags %}
+
+Tags: {{ dish.tags | map(attribute="name") | join(", ") }}
+{% endif %}
+{% if event.event_date %}
+
+Date: {{ event.event_date.strftime("%A, %B %d, %Y") }}
+{% endif %}
+
+
+See what everyone else is bringing:
+{{ board_url }}
+
+Need to change or remove your dish? Reach out to the event host ({{ event.host_name }}) directly. They can edit or remove any entry. There is no edit link for guests.

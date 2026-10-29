@@ -1,0 +1,8 @@
+{% extends "_layout.html" %}
+{% block body %}
+<h1 style="font-size:20px;margin:0 0 12px;">New dish for {{ event.name }}</h1>
+<p style="margin:0 0 16px;"><strong>{{ dish.contributor }}</strong> is bringing <strong>{{ dish.dish_name }}</strong> ({{ dish.dish_type }}).</p>
+{% if dish.notes %}<p style="margin:0 0 8px;"><strong>Notes:</strong> {{ dish.notes }}</p>{% endif %}
+{% if dish.tags %}<p style="margin:0 0 8px;"><strong>Tags:</strong> {{ dish.tags | map(attribute="name") | join(", ") }}</p>{% endif %}
+<p style="margin:16px 0 0;"><a href="{{ board_url }}">Guest board</a> &middot; <a href="{{ manage_url }}">Manage your event</a></p>
+{% endblock %}

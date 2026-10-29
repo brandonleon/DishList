@@ -57,3 +57,35 @@ def send_host_welcome(
         else f"Your DishList event is ready: {event.name}"
     )
     return mailer.send_email(event.host_email, subject, text, html)
+
+
+def send_guest_confirmation(event: Event, dish: DishEntry, base_url: str) -> bool:
+    """Confirm a Guest's Submission and tell them to ask the Host for changes."""
+
+    if not dish.contributor_email:
+        return False
+    text, html = _render(
+        "guest_confirmation", event=event, dish=dish, **_links(event, base_url)
+    )
+    return mailer.send_email(
+        dish.contributor_email,
+        f"You're bringing {dish.dish_name} to {event.name}",
+        text,
+        html,
+    )
+
+
+def send_host_dish_notice(event: Event, dish: DishEntry, base_url: str) -> bool:
+    """Tell the Host a Guest added a dish, if they opted in."""
+
+    if not (event.host_email and event.notify_host):
+        return False
+    text, html = _render(
+        "host_dish_notice", event=event, dish=dish, **_links(event, base_url)
+    )
+    return mailer.send_email(
+        event.host_email,
+        f"{dish.contributor} is bringing {dish.dish_name} to {event.name}",
+        text,
+        html,
+    )

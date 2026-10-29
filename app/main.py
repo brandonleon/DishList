@@ -426,14 +426,17 @@ def event_add_form(request: Request, slug: str) -> HTMLResponse:
 @app.post("/e/{slug}/add")
 def event_add_submission(
     request: Request,
+    background_tasks: BackgroundTasks,
     slug: str,
     contributor: str = Form(..., min_length=1, max_length=80),
     dish_name: str = Form(..., min_length=1, max_length=120),
     dish_type: str = Form(...),
     notes: Optional[str] = Form(None),
     dietary_tags: List[int] = Form(default=[]),
+    contributor_email: Optional[str] = Form(None),
 ) -> RedirectResponse:
     event = _get_event_by_slug_or_404(slug)
+    clean_contributor_email = _email_or_400(contributor_email)
     if not event.is_active:
         raise HTTPException(
             status_code=403, detail="This event is no longer accepting submissions"
@@ -446,17 +449,26 @@ def event_add_submission(
     if len(tags) != len(tag_ids):
         raise HTTPException(status_code=400, detail="Unknown dietary tag selected")
 
-    add_dish(
-        DishEntry(
-            event_id=event.id,
-            contributor=contributor.strip(),
-            dish_name=dish_name.strip(),
-            dish_type=dish_type,
-            tag_ids=[tag.id for tag in tags],
-            tags=tags,
-            notes=notes.strip() if notes else None,
-        )
+    dish = DishEntry(
+        event_id=event.id,
+        contributor=contributor.strip(),
+        dish_name=dish_name.strip(),
+        dish_type=dish_type,
+        tag_ids=[tag.id for tag in tags],
+        tags=tags,
+        notes=notes.strip() if notes else None,
+        contributor_email=clean_contributor_email,
     )
+    add_dish(dish)
+    base_url = _base_url(request)
+    if dish.contributor_email:
+        background_tasks.add_task(
+            notifications.send_guest_confirmation, event, dish, base_url
+        )
+    if event.host_email and event.notify_host:
+        background_tasks.add_task(
+            notifications.send_host_dish_notice, event, dish, base_url
+        )
     return RedirectResponse(
         url=request.url_for("event_home", slug=slug),
         status_code=status.HTTP_303_SEE_OTHER,
