@@ -23,6 +23,8 @@ class DishEntry(BaseModel):
     notes: Optional[str] = None
     is_host_item: bool = False
     created_at: datetime = Field(default_factory=_current_utc)
+    # Private: only used to send the submitter a confirmation; never rendered.
+    contributor_email: Optional[str] = None
 
 
 class Tag(BaseModel):
@@ -45,3 +47,6 @@ class Event(BaseModel):
     dish_types: List[str] = Field(default_factory=list)
     is_active: bool = True
     created_at: datetime = Field(default_factory=_current_utc)
+    # Private: used to email the management link and guest notifications.
+    host_email: Optional[str] = None
+    notify_host: bool = False
