@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import ipaddress
 import json
+import logging
 import os
 import signal
+import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -13,11 +15,12 @@ from importlib import metadata
 
 import tomllib
 
-from fastapi import FastAPI, Form, HTTPException, Request, status
+from fastapi import BackgroundTasks, FastAPI, Form, HTTPException, Request, status
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from . import mailer, notifications, ratelimit
 from .config import AppConfig, DATA_DIR, load_config, save_config
 from .metrics import (
     DISHES_TOTAL,
@@ -47,6 +50,7 @@ from .storage import (
     init_db,
     load_dishes_for_event,
     load_events,
+    purge_expired_emails,
     load_tag_groups,
     update_dish,
     update_event,
@@ -69,9 +73,26 @@ def _handle_sigusr1(signum, frame) -> None:  # noqa: ANN001
     _do_reload_config()
 
 
+_PURGE_INTERVAL_SECONDS = 3600
+_last_email_purge = 0.0
+
+
+def _purge_emails(force: bool = False) -> None:
+    """Wipe stored emails for finished events; throttled unless forced."""
+    global _last_email_purge
+    now = time.monotonic()
+    if not force and _last_email_purge and now - _last_email_purge < _PURGE_INTERVAL_SECONDS:
+        return
+    _last_email_purge = now
+    purge_expired_emails()
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     init_db()
+    _purge_emails(force=True)
+    # uvicorn's logger so the line shows up in platform logs by default.
+    logging.getLogger("uvicorn.error").info(mailer.status_summary())
     app.state.config = load_config()
     try:
         DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -139,10 +160,42 @@ APP_VERSION = _load_app_version()
 templates.env.filters["format_dish_timestamp"] = _format_dish_timestamp
 templates.env.filters["tag_category_class"] = _tag_category_class
 templates.env.globals["app_version"] = APP_VERSION
+templates.env.globals["email_enabled"] = mailer.is_configured
 
 
 def get_config() -> AppConfig:
     return getattr(app.state, "config", load_config())
+
+
+def _email_or_400(value: Optional[str]) -> Optional[str]:
+    """Normalize an optional email field; drop it entirely if email is not configured."""
+    if not mailer.is_configured():
+        return None
+    try:
+        return mailer.clean_email(value)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid email address")
+
+
+def _accept_email(request: Request, value: Optional[str]) -> Optional[str]:
+    """Validate an optional email and apply per-IP and per-address send limits.
+
+    When a limit is hit the address is dropped (neither stored nor mailed) so
+    the request itself still succeeds.
+    """
+    address = _email_or_400(value)
+    if address is None:
+        return None
+    client_ip = request.client.host if request.client else "unknown"
+    if ratelimit.limiter.allow(
+        f"ip:{client_ip}", ratelimit.IP_LIMIT
+    ) and ratelimit.limiter.allow(f"to:{address.lower()}", ratelimit.ADDRESS_LIMIT):
+        return address
+    return None
+
+
+def _base_url(request: Request) -> str:
+    return mailer.public_base_url(str(request.base_url))
 
 
 def _normalize_tag_ids(raw_ids: List[int]) -> List[int]:
@@ -237,6 +290,7 @@ def create_event_form(request: Request) -> HTMLResponse:
 @app.post("/create")
 def create_event_submit(
     request: Request,
+    background_tasks: BackgroundTasks,
     name: str = Form(..., min_length=1, max_length=120),
     description: Optional[str] = Form(None),
     event_date: Optional[str] = Form(None),
@@ -246,7 +300,10 @@ def create_event_submit(
     host_item_names: List[str] = Form(default=[]),
     host_item_types: List[str] = Form(default=[]),
     host_item_notes: List[str] = Form(default=[]),
+    host_email: Optional[str] = Form(None),
+    notify_host: Optional[str] = Form(None),
 ) -> RedirectResponse:
+    clean_host_email = _accept_email(request, host_email)
     dish_types = [
         line.strip() for line in dish_types_input.splitlines() if line.strip()
     ]
@@ -275,9 +332,12 @@ def create_event_submit(
         host_name=host_name.strip() if host_name and host_name.strip() else "The House",
         dish_types=dish_types,
         use_random_slug=bool(use_random_slug),
+        host_email=clean_host_email,
+        notify_host=bool(notify_host),
     )
 
     # Add host contributions
+    host_items: List[DishEntry] = []
     for item_name, item_type, item_notes in zip(
         host_item_names, host_item_types, host_item_notes
     ):
@@ -286,15 +346,20 @@ def create_event_submit(
             continue
         if item_type not in dish_types:
             item_type = dish_types[0]
-        add_dish(
-            DishEntry(
-                event_id=event.id,
-                contributor=event.host_name,
-                dish_name=item_name,
-                dish_type=item_type,
-                notes=item_notes.strip() if item_notes and item_notes.strip() else None,
-                is_host_item=True,
-            )
+        host_item = DishEntry(
+            event_id=event.id,
+            contributor=event.host_name,
+            dish_name=item_name,
+            dish_type=item_type,
+            notes=item_notes.strip() if item_notes and item_notes.strip() else None,
+            is_host_item=True,
+        )
+        add_dish(host_item)
+        host_items.append(host_item)
+
+    if event.host_email:
+        background_tasks.add_task(
+            notifications.send_host_welcome, event, host_items, _base_url(request)
         )
 
     return RedirectResponse(
@@ -341,6 +406,7 @@ def metrics(request: Request) -> Response:
 
 @app.get("/e/{slug}", response_class=HTMLResponse)
 def event_home(request: Request, slug: str) -> HTMLResponse:
+    _purge_emails()
     event = _get_event_by_slug_or_404(slug)
     view_mode = request.query_params.get("view", "cards")
     if view_mode not in {"cards", "table"}:
@@ -398,14 +464,17 @@ def event_add_form(request: Request, slug: str) -> HTMLResponse:
 @app.post("/e/{slug}/add")
 def event_add_submission(
     request: Request,
+    background_tasks: BackgroundTasks,
     slug: str,
     contributor: str = Form(..., min_length=1, max_length=80),
     dish_name: str = Form(..., min_length=1, max_length=120),
     dish_type: str = Form(...),
     notes: Optional[str] = Form(None),
     dietary_tags: List[int] = Form(default=[]),
+    contributor_email: Optional[str] = Form(None),
 ) -> RedirectResponse:
     event = _get_event_by_slug_or_404(slug)
+    clean_contributor_email = _accept_email(request, contributor_email)
     if not event.is_active:
         raise HTTPException(
             status_code=403, detail="This event is no longer accepting submissions"
@@ -418,17 +487,30 @@ def event_add_submission(
     if len(tags) != len(tag_ids):
         raise HTTPException(status_code=400, detail="Unknown dietary tag selected")
 
-    add_dish(
-        DishEntry(
-            event_id=event.id,
-            contributor=contributor.strip(),
-            dish_name=dish_name.strip(),
-            dish_type=dish_type,
-            tag_ids=[tag.id for tag in tags],
-            tags=tags,
-            notes=notes.strip() if notes else None,
-        )
+    dish = DishEntry(
+        event_id=event.id,
+        contributor=contributor.strip(),
+        dish_name=dish_name.strip(),
+        dish_type=dish_type,
+        tag_ids=[tag.id for tag in tags],
+        tags=tags,
+        notes=notes.strip() if notes else None,
+        contributor_email=clean_contributor_email,
     )
+    add_dish(dish)
+    base_url = _base_url(request)
+    if dish.contributor_email:
+        background_tasks.add_task(
+            notifications.send_guest_confirmation, event, dish, base_url
+        )
+    if (
+        event.host_email
+        and event.notify_host
+        and ratelimit.limiter.allow(f"notice:{event.id}", ratelimit.EVENT_NOTICE_LIMIT)
+    ):
+        background_tasks.add_task(
+            notifications.send_host_dish_notice, event, dish, base_url
+        )
     return RedirectResponse(
         url=request.url_for("event_home", slug=slug),
         status_code=status.HTTP_303_SEE_OTHER,
@@ -477,6 +559,7 @@ def manage_event(request: Request, token: str) -> HTMLResponse:
         "manage.html",
         {
             "event": event,
+            "email_sent": request.query_params.get("email_sent") == "1",
             "host_dishes": host_dishes,
             "guest_dishes": guest_dishes,
             "tag_groups": load_tag_groups(),
@@ -528,8 +611,39 @@ def update_event_settings(
         dish_types=dish_types,
         is_active=bool(is_active),
     )
+    if not is_active:
+        _purge_emails(force=True)
     return RedirectResponse(
         url=request.url_for("manage_event", token=token),
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+@app.post("/manage/{token}/email-link")
+def email_management_link(
+    request: Request, background_tasks: BackgroundTasks, token: str
+) -> RedirectResponse:
+    """Re-send the management link to the address stored at creation.
+
+    The recipient is never taken from the request, so this cannot be used to
+    mail the link anywhere else.
+    """
+    event = _get_event_by_token_or_404(token)
+    if not (mailer.is_configured() and event.host_email):
+        raise HTTPException(status_code=400, detail="No email on file for this event")
+    if not ratelimit.limiter.allow(f"link:{event.id}", ratelimit.LINK_RESEND_LIMIT):
+        raise HTTPException(
+            status_code=429, detail="Too many emails requested; try again later"
+        )
+    background_tasks.add_task(
+        notifications.send_host_welcome,
+        event,
+        [d for d in load_dishes_for_event(event.id) if d.is_host_item],
+        _base_url(request),
+        True,
+    )
+    return RedirectResponse(
+        url=str(request.url_for("manage_event", token=token)) + "?email_sent=1",
         status_code=status.HTTP_303_SEE_OTHER,
     )
 

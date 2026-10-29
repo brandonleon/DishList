@@ -57,6 +57,16 @@
   </div>
 </div>
 
+{% if email_sent %}
+<div class="alert alert-success" role="alert">We've emailed the management link to the address you gave when creating this event.</div>
+{% endif %}
+{% if email_enabled() and event.host_email %}
+<form method="post" action="{{ url_for('email_management_link', token=event.management_token) }}" class="mb-4">
+  <button type="submit" class="btn btn-outline-secondary btn-sm">Email me this management link</button>
+  <span class="text-muted small ms-2">Sent to the address you gave at creation; deleted after your event.</span>
+</form>
+{% endif %}
+
 <!-- ── Event settings ────────────────────────────────────────── -->
 <div class="card shadow-sm mb-4">
   <div class="card-body p-4">

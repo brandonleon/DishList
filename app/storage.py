@@ -267,6 +267,22 @@ def _get_connection() -> Generator[sqlite3.Connection, None, None]:
         conn.close()
 
 
+# Columns added after the first release; CREATE TABLE IF NOT EXISTS does not
+# touch tables that already exist, so older databases get them via ALTER TABLE.
+_ADDED_COLUMNS = (
+    ("events", "host_email", "TEXT"),
+    ("events", "notify_host", "INTEGER NOT NULL DEFAULT 0"),
+    ("dishes", "contributor_email", "TEXT"),
+)
+
+
+def _add_missing_columns(conn: sqlite3.Connection) -> None:
+    for table, column, definition in _ADDED_COLUMNS:
+        existing = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+        if column not in existing:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+
+
 def init_db() -> None:
     """Create database tables and seed defaults if they do not exist."""
 
@@ -283,7 +299,9 @@ def init_db() -> None:
                 host_name TEXT NOT NULL DEFAULT 'The House',
                 dish_types TEXT NOT NULL DEFAULT '[]',
                 is_active INTEGER NOT NULL DEFAULT 1,
-                created_at TEXT NOT NULL
+                created_at TEXT NOT NULL,
+                host_email TEXT,
+                notify_host INTEGER NOT NULL DEFAULT 0
             )
             """
         )
@@ -308,6 +326,7 @@ def init_db() -> None:
                 notes TEXT,
                 is_host_item INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL,
+                contributor_email TEXT,
                 FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
             )
             """
@@ -386,6 +405,7 @@ def init_db() -> None:
             ON dish_tags (dish_id)
             """
         )
+        _add_missing_columns(conn)
         _seed_or_migrate_config_entries(conn)
         _seed_or_migrate_tags(conn)
         _seed_or_migrate_keywords(conn)
@@ -412,6 +432,8 @@ def _row_to_event(row: sqlite3.Row) -> Event:
         dish_types=json.loads(row["dish_types"]),
         is_active=bool(row["is_active"]),
         created_at=datetime.fromisoformat(row["created_at"]),
+        host_email=row["host_email"],
+        notify_host=bool(row["notify_host"]),
     )
 
 
@@ -448,6 +470,8 @@ def create_event(
     host_name: str,
     dish_types: List[str],
     use_random_slug: bool = False,
+    host_email: Optional[str] = None,
+    notify_host: bool = False,
 ) -> Event:
     with _get_connection() as conn:
         slug = _make_unique_slug(conn, name, use_random_slug)
@@ -456,8 +480,8 @@ def create_event(
         safe_host = host_name.strip() or "The House"
         cursor = conn.execute(
             """
-            INSERT INTO events (slug, management_token, name, description, event_date, host_name, dish_types, is_active, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
+            INSERT INTO events (slug, management_token, name, description, event_date, host_name, dish_types, is_active, created_at, host_email, notify_host)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
             """,
             (
                 slug,
@@ -468,6 +492,8 @@ def create_event(
                 safe_host,
                 json.dumps(dish_types),
                 now,
+                host_email,
+                1 if (notify_host and host_email) else 0,
             ),
         )
         event_id = cursor.lastrowid
@@ -491,6 +517,8 @@ def create_event(
         dish_types=dish_types,
         is_active=True,
         created_at=datetime.fromisoformat(now),
+        host_email=host_email,
+        notify_host=bool(notify_host and host_email),
     )
 
 
@@ -560,6 +588,47 @@ def update_event(
         )
 
 
+# How long after the event date, or after creation for undated events, stored
+# email addresses are kept before being wiped.
+EMAIL_GRACE_DAYS = 1
+EMAIL_UNDATED_RETENTION_DAYS = 30
+
+
+def purge_expired_emails(today: Optional[date] = None) -> int:
+    """Null out stored email addresses for events that are over.
+
+    An event is over once it is closed, its date passed (plus a short grace
+    period), or, with no date, it is older than EMAIL_UNDATED_RETENTION_DAYS.
+    Returns the number of addresses removed.
+    """
+
+    day = (today or datetime.now(timezone.utc).date()).isoformat()
+    over = """
+        SELECT id FROM events WHERE
+            is_active = 0
+            OR (event_date IS NOT NULL AND date(event_date) < date(?, ?))
+            OR (event_date IS NULL AND date(created_at) < date(?, ?))
+    """
+    params = (
+        day,
+        f"-{EMAIL_GRACE_DAYS} days",
+        day,
+        f"-{EMAIL_UNDATED_RETENTION_DAYS} days",
+    )
+    with _get_connection() as conn:
+        dishes = conn.execute(
+            f"UPDATE dishes SET contributor_email = NULL "
+            f"WHERE contributor_email IS NOT NULL AND event_id IN ({over})",
+            params,
+        ).rowcount
+        events = conn.execute(
+            f"UPDATE events SET host_email = NULL, notify_host = 0 "
+            f"WHERE host_email IS NOT NULL AND id IN ({over})",
+            params,
+        ).rowcount
+    return dishes + events
+
+
 def delete_event(event_id: int) -> None:
     with _get_connection() as conn:
         conn.execute("DELETE FROM events WHERE id = ?", (event_id,))
@@ -581,6 +650,7 @@ def _row_to_entry(row: sqlite3.Row, tags: Optional[List[Tag]] = None) -> DishEnt
         notes=row["notes"],
         is_host_item=bool(row["is_host_item"]),
         created_at=row["created_at"],
+        contributor_email=row["contributor_email"],
     )
 
 
@@ -642,7 +712,7 @@ def load_dishes_for_event(event_id: int) -> List[DishEntry]:
         rows = conn.execute(
             """
             SELECT id, event_id, contributor, dish_name, dish_type,
-                   notes, is_host_item, created_at
+                   notes, is_host_item, created_at, contributor_email
             FROM dishes
             WHERE event_id = ?
             ORDER BY is_host_item DESC, datetime(created_at) ASC, id ASC
@@ -659,7 +729,7 @@ def load_all_dishes() -> List[DishEntry]:
         rows = conn.execute(
             """
             SELECT id, event_id, contributor, dish_name, dish_type,
-                   notes, is_host_item, created_at
+                   notes, is_host_item, created_at, contributor_email
             FROM dishes
             ORDER BY datetime(created_at) DESC, id DESC
             """
@@ -673,7 +743,7 @@ def get_dish(dish_id: int) -> Optional[DishEntry]:
         row = conn.execute(
             """
             SELECT id, event_id, contributor, dish_name, dish_type,
-                   notes, is_host_item, created_at
+                   notes, is_host_item, created_at, contributor_email
             FROM dishes WHERE id = ?
             """,
             (dish_id,),
@@ -688,8 +758,8 @@ def add_dish(entry: DishEntry) -> int:
         cursor = conn.execute(
             """
             INSERT INTO dishes (event_id, contributor, dish_name, dish_type,
-                                notes, is_host_item, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+                                notes, is_host_item, created_at, contributor_email)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 entry.event_id,
@@ -699,6 +769,7 @@ def add_dish(entry: DishEntry) -> int:
                 entry.notes,
                 1 if entry.is_host_item else 0,
                 entry.created_at.isoformat(),
+                entry.contributor_email,
             ),
         )
         dish_id = cursor.lastrowid

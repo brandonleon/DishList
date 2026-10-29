@@ -19,6 +19,7 @@ Usage:
     dishlist admin events list            List all events
     dishlist admin events token <id>      Print the management URL for an event
     dishlist admin events delete <id>     Delete an event and all its dishes
+    dishlist admin email test --to <addr> Send a test email through Resend
     dishlist admin metrics status         Show /metrics endpoint status
     dishlist admin metrics enable         Enable the Prometheus /metrics endpoint
     dishlist admin metrics disable        Disable the Prometheus /metrics endpoint
@@ -507,6 +508,39 @@ def events_delete(event_id: int) -> None:
 
     delete_event(event_id)
     _ok(f"Deleted event {event_id}")
+
+
+# ── admin email ───────────────────────────────────────────────────────────────
+
+
+@admin.group()
+def email() -> None:
+    """Check the optional Resend email integration."""
+
+
+@email.command("test")
+@click.option("--to", "recipient", required=True, help="Address to send the test to.")
+def email_test(recipient: str) -> None:
+    """Send a test email using RESEND_API_KEY / RESEND_FROM from the environment."""
+    from app.mailer import clean_email, is_configured, send_email
+
+    if not is_configured():
+        _err("Email is not configured. Set RESEND_API_KEY and RESEND_FROM.")
+        sys.exit(1)
+    try:
+        address = clean_email(recipient)
+    except ValueError:
+        _err(f"'{recipient}' is not a valid email address.")
+        sys.exit(1)
+    assert address is not None
+    if not send_email(
+        address,
+        "DishList test email",
+        "If you can read this, DishList can send email through Resend.",
+    ):
+        _err("Resend rejected the message. Check the API key, sender domain and logs.")
+        sys.exit(1)
+    _ok(f"Test email sent to {address}")
 
 
 # ── admin metrics ─────────────────────────────────────────────────────────────

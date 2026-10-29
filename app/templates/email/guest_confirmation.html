@@ -1,0 +1,10 @@
+{% extends "_layout.html" %}
+{% block body %}
+<h1 style="font-size:20px;margin:0 0 12px;">You're on the list, {{ dish.contributor }}!</h1>
+<p style="margin:0 0 16px;">You're bringing <strong>{{ dish.dish_name }}</strong> ({{ dish.dish_type }}) to <strong>{{ event.name }}</strong>.</p>
+{% if dish.notes %}<p style="margin:0 0 8px;"><strong>Notes:</strong> {{ dish.notes }}</p>{% endif %}
+{% if dish.tags %}<p style="margin:0 0 8px;"><strong>Tags:</strong> {{ dish.tags | map(attribute="name") | join(", ") }}</p>{% endif %}
+{% if event.event_date %}<p style="margin:0 0 8px;"><strong>Date:</strong> {{ event.event_date.strftime("%A, %B %d, %Y") }}</p>{% endif %}
+<p style="margin:16px 0 20px;"><a href="{{ board_url }}" style="display:inline-block;background:#2f6f4e;color:#ffffff;text-decoration:none;padding:10px 18px;border-radius:6px;">See what everyone's bringing</a></p>
+<p style="margin:0;font-size:14px;color:#555;">Need to change or remove your dish? Reach out to the event host ({{ event.host_name }}) directly. They can edit or remove any entry. There is no edit link for guests.</p>
+{% endblock %}

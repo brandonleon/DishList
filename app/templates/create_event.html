@@ -47,6 +47,25 @@
             ></textarea>
           </div>
 
+          {% if email_enabled() %}
+          <!-- ── Optional email ─────────────────────────────────── -->
+          <div class="mb-4 p-3 rounded-3 border bg-light">
+            <label for="host_email" class="form-label fw-semibold">Your email <span class="text-muted fw-normal">(optional)</span></label>
+            <input
+              type="email" class="form-control" id="host_email" name="host_email"
+              placeholder="you@example.com" maxlength="254" autocomplete="email"
+            />
+            <div class="form-text">
+              We'll email you your private management link so you can't lose it. Guests never see this address,
+              and it is deleted after your event is over.
+            </div>
+            <div class="form-check mt-2">
+              <input class="form-check-input" type="checkbox" id="notify_host" name="notify_host" value="1" />
+              <label class="form-check-label small" for="notify_host">Email me when a guest adds a dish</label>
+            </div>
+          </div>
+          {% endif %}
+
           <!-- ── Event URL ──────────────────────────────────────── -->
           <div class="mb-4 p-3 rounded-3 border bg-light">
             <h2 class="h6 mb-1 fw-semibold">Your event URL</h2>

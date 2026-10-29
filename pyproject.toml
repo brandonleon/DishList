@@ -1,11 +1,11 @@
 [project]
 name = "dishlist"
-version = "0.5.0"
+version = "0.6.0"
 description = "Self-hosted potluck planner"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "fastapi>=0.115,<1",
+    "fastapi[standard]>=0.115,<1",
     "uvicorn",
     "jinja2",
     "python-multipart",
@@ -13,6 +13,7 @@ dependencies = [
     "starlette<1.0",
     "click>=8.3.3",
     "prometheus-client>=0.20",
+    "httpx>=0.28.1",
 ]
 
 [project.scripts]
@@ -26,7 +27,6 @@ include = ["app*"]
 
 [dependency-groups]
 dev = [
-    "httpx>=0.28.1",
     "pytest>=9.0.3",
     "pytest-cov>=7.1.0",
 ]

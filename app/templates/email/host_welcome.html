@@ -1,0 +1,18 @@
+{% extends "_layout.html" %}
+{% block body %}
+<h1 style="font-size:20px;margin:0 0 12px;">{% if resend %}Your management link{% else %}Your event is ready{% endif %}: {{ event.name }}</h1>
+<p style="margin:0 0 16px;">Use this private link to edit your event, add your own dishes, and manage guest submissions.</p>
+<p style="margin:0 0 20px;"><a href="{{ manage_url }}" style="display:inline-block;background:#2f6f4e;color:#ffffff;text-decoration:none;padding:10px 18px;border-radius:6px;">Open management page</a></p>
+<p style="margin:0 0 4px;"><strong>Share with guests:</strong></p>
+<p style="margin:0 0 16px;"><a href="{{ board_url }}">{{ board_url }}</a></p>
+{% if event.event_date %}<p style="margin:0 0 4px;"><strong>Date:</strong> {{ event.event_date.strftime("%A, %B %d, %Y") }}</p>{% endif %}
+<p style="margin:0 0 16px;"><strong>Dish types:</strong> {{ event.dish_types | join(", ") }}</p>
+{% if host_dishes %}
+<p style="margin:0 0 4px;"><strong>What you're providing:</strong></p>
+<ul style="margin:0 0 16px;padding-left:20px;">
+  {% for dish in host_dishes %}<li>{{ dish.dish_name }} ({{ dish.dish_type }})</li>{% endfor %}
+</ul>
+{% endif %}
+{% if event.notify_host %}<p style="margin:0 0 16px;">You'll get an email each time a guest adds a dish.</p>{% endif %}
+<p style="margin:0;font-size:14px;color:#555;">Anyone with the management link can edit or close your event, so don't forward it. Guests who need a change to their dish should ask you; you can edit or remove any dish from the management page.</p>
+{% endblock %}

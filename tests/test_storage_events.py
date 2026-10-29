@@ -228,3 +228,68 @@ class TestGetTagsByIds:
         tag = create_tag("Hidden test", "Content & serving", is_hidden=True)
         fetched = get_tags_by_ids([tag.id])
         assert fetched[0].is_hidden is True
+
+
+def test_email_fields_round_trip():
+    from app.models import DishEntry
+    from app.storage import add_dish, get_dish, get_event_by_id, create_event
+
+    event = create_event(
+        "Mail", None, None, "Host", ["Main"], host_email="h@x.co", notify_host=True
+    )
+    loaded = get_event_by_id(event.id)
+    assert loaded.host_email == "h@x.co"
+    assert loaded.notify_host is True
+
+    dish_id = add_dish(
+        DishEntry(
+            event_id=event.id,
+            contributor="G",
+            dish_name="Pie",
+            dish_type="Main",
+            contributor_email="g@x.co",
+        )
+    )
+    assert get_dish(dish_id).contributor_email == "g@x.co"
+
+
+def test_notify_host_requires_email():
+    from app.storage import create_event
+
+    event = create_event("NoMail", None, None, "Host", ["Main"], notify_host=True)
+    assert event.notify_host is False
+
+
+def test_init_db_adds_columns_to_old_database(tmp_path, monkeypatch):
+    import sqlite3
+
+    import app.storage as storage
+
+    old = tmp_path / "old.db"
+    conn = sqlite3.connect(old)
+    conn.execute(
+        "CREATE TABLE events (id INTEGER PRIMARY KEY AUTOINCREMENT, slug TEXT NOT NULL UNIQUE,"
+        " management_token TEXT NOT NULL UNIQUE, name TEXT NOT NULL, description TEXT,"
+        " event_date TEXT, host_name TEXT NOT NULL DEFAULT 'The House',"
+        " dish_types TEXT NOT NULL DEFAULT '[]', is_active INTEGER NOT NULL DEFAULT 1,"
+        " created_at TEXT NOT NULL)"
+    )
+    conn.execute(
+        "CREATE TABLE dishes (id INTEGER PRIMARY KEY AUTOINCREMENT, event_id INTEGER NOT NULL,"
+        " contributor TEXT NOT NULL, dish_name TEXT NOT NULL, dish_type TEXT NOT NULL,"
+        " notes TEXT, is_host_item INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL)"
+    )
+    conn.execute(
+        "INSERT INTO events (slug, management_token, name, dish_types, created_at)"
+        " VALUES ('s', 't', 'Old', '[\"Main\"]', '2025-01-01T00:00:00+00:00')"
+    )
+    conn.commit()
+    conn.close()
+
+    monkeypatch.setattr(storage, "DB_PATH", old)
+    storage.init_db()
+    storage.init_db()  # idempotent
+
+    event = storage.get_event_by_slug("s")
+    assert event.host_email is None
+    assert event.notify_host is False
