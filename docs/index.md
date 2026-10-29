@@ -94,6 +94,18 @@ After creation you land on your **management dashboard**. Bookmark that URL — 
 
 ---
 
+## Lost a link? Find your events and dishes by email
+
+If the server has email set up and you gave an email address when you created an event or added a dish, you can get your links again. Open **Find your events and dishes by email** on the home page (or go to `/find`), enter the address and submit.
+
+If anything is stored under that address you'll receive one email:
+- for **events you host**: the public guest link and your private management link;
+- for **dishes you added**: the link to each event's public page (no management link; ask the host for any change).
+
+The page always shows the same message — *"If an event or dish is associated with this email, you will receive an email with details."* — whether or not the address is known, so it can't be used to check who has signed up, and mistyped addresses are never emailed. Addresses are deleted once an event is over, so only live events can be found. Lookups are rate-limited.
+
+---
+
 ## Sharing with guests
 
 From the management dashboard, copy the **Guest link** and share it however you like — group chat, email, calendar invite. Guests don't need an account.

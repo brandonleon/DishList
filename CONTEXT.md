@@ -137,7 +137,7 @@ Slug Mode is set once at Event creation and cannot be changed. It is a property 
 
 ## Email (optional)
 
-An operator-enabled feature that sends transactional email through Resend. A Host may give an address when creating an Event to receive their Management link (and, optionally, a notice per new Submission); a Guest may give an address on a Submission to receive a confirmation. Addresses are private, never shown on the Guest Board, and deleted once the Event is over (closed, past its date, or 30 days old if undated). Not an account or identity: an address is only a delivery target. See [ADR-0007](./docs/adr/0007-optional-email-via-resend.md).
+An operator-enabled feature that sends transactional email through Resend. A Host may give an address when creating an Event to receive their Management link (and, optionally, a notice per new Submission); a Guest may give an address on a Submission to receive a confirmation. Addresses are private, never shown on the Guest Board, and deleted once the Event is over (closed, past its date, or 30 days old if undated). Anyone can ask, via the **Find** page, to be emailed the Management and Guest links of Events they host and the Event links of Submissions they made; the page's response is identical whether or not the address is known, and unknown addresses are sent nothing. Not an account or identity: an address is only a delivery target. See [ADR-0007](./docs/adr/0007-optional-email-via-resend.md).
 
 ---
 
