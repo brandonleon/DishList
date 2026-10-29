@@ -6,32 +6,6 @@ from app import mailer
 from app.storage import get_event_by_management_token
 
 
-@pytest.fixture()
-def email_on(monkeypatch):
-    monkeypatch.setenv("RESEND_API_KEY", "re_test")
-    monkeypatch.setenv("RESEND_FROM", "DishList <hi@example.com>")
-    monkeypatch.setenv("PUBLIC_BASE_URL", "https://dish.example.com")
-
-
-@pytest.fixture()
-def sent(monkeypatch):
-    """Capture outgoing mail instead of calling Resend."""
-    messages = []
-
-    def fake_send(to, subject, text, html=None):
-        messages.append({"to": to, "subject": subject, "text": text, "html": html})
-        return True
-
-    monkeypatch.setattr(mailer, "send_email", fake_send)
-    return messages
-
-
-@pytest.fixture()
-def email_off(monkeypatch):
-    monkeypatch.delenv("RESEND_API_KEY", raising=False)
-    monkeypatch.delenv("RESEND_FROM", raising=False)
-
-
 def _create(client, **extra):
     data = {"name": "Mail Potluck", "dish_types_input": "Main\nSide", "host_name": "Hosty"}
     data.update(extra)

@@ -19,7 +19,7 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Resp
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from . import mailer, notifications
+from . import mailer, notifications, ratelimit
 from .config import AppConfig, DATA_DIR, load_config, save_config
 from .metrics import (
     DISHES_TOTAL,
@@ -174,6 +174,23 @@ def _email_or_400(value: Optional[str]) -> Optional[str]:
         raise HTTPException(status_code=400, detail="Invalid email address")
 
 
+def _accept_email(request: Request, value: Optional[str]) -> Optional[str]:
+    """Validate an optional email and apply per-IP and per-address send limits.
+
+    When a limit is hit the address is dropped (neither stored nor mailed) so
+    the request itself still succeeds.
+    """
+    address = _email_or_400(value)
+    if address is None:
+        return None
+    client_ip = request.client.host if request.client else "unknown"
+    if ratelimit.limiter.allow(
+        f"ip:{client_ip}", ratelimit.IP_LIMIT
+    ) and ratelimit.limiter.allow(f"to:{address.lower()}", ratelimit.ADDRESS_LIMIT):
+        return address
+    return None
+
+
 def _base_url(request: Request) -> str:
     return mailer.public_base_url(str(request.base_url))
 
@@ -283,7 +300,7 @@ def create_event_submit(
     host_email: Optional[str] = Form(None),
     notify_host: Optional[str] = Form(None),
 ) -> RedirectResponse:
-    clean_host_email = _email_or_400(host_email)
+    clean_host_email = _accept_email(request, host_email)
     dish_types = [
         line.strip() for line in dish_types_input.splitlines() if line.strip()
     ]
@@ -454,7 +471,7 @@ def event_add_submission(
     contributor_email: Optional[str] = Form(None),
 ) -> RedirectResponse:
     event = _get_event_by_slug_or_404(slug)
-    clean_contributor_email = _email_or_400(contributor_email)
+    clean_contributor_email = _accept_email(request, contributor_email)
     if not event.is_active:
         raise HTTPException(
             status_code=403, detail="This event is no longer accepting submissions"
@@ -483,7 +500,11 @@ def event_add_submission(
         background_tasks.add_task(
             notifications.send_guest_confirmation, event, dish, base_url
         )
-    if event.host_email and event.notify_host:
+    if (
+        event.host_email
+        and event.notify_host
+        and ratelimit.limiter.allow(f"notice:{event.id}", ratelimit.EVENT_NOTICE_LIMIT)
+    ):
         background_tasks.add_task(
             notifications.send_host_dish_notice, event, dish, base_url
         )
@@ -607,6 +628,10 @@ def email_management_link(
     event = _get_event_by_token_or_404(token)
     if not (mailer.is_configured() and event.host_email):
         raise HTTPException(status_code=400, detail="No email on file for this event")
+    if not ratelimit.limiter.allow(f"link:{event.id}", ratelimit.LINK_RESEND_LIMIT):
+        raise HTTPException(
+            status_code=429, detail="Too many emails requested; try again later"
+        )
     background_tasks.add_task(
         notifications.send_host_welcome,
         event,
