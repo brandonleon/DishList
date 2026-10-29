@@ -13,11 +13,12 @@ from importlib import metadata
 
 import tomllib
 
-from fastapi import FastAPI, Form, HTTPException, Request, status
+from fastapi import BackgroundTasks, FastAPI, Form, HTTPException, Request, status
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from . import mailer, notifications
 from .config import AppConfig, DATA_DIR, load_config, save_config
 from .metrics import (
     DISHES_TOTAL,
@@ -139,10 +140,25 @@ APP_VERSION = _load_app_version()
 templates.env.filters["format_dish_timestamp"] = _format_dish_timestamp
 templates.env.filters["tag_category_class"] = _tag_category_class
 templates.env.globals["app_version"] = APP_VERSION
+templates.env.globals["email_enabled"] = mailer.is_configured
 
 
 def get_config() -> AppConfig:
     return getattr(app.state, "config", load_config())
+
+
+def _email_or_400(value: Optional[str]) -> Optional[str]:
+    """Normalize an optional email field; drop it entirely if email is not configured."""
+    if not mailer.is_configured():
+        return None
+    try:
+        return mailer.clean_email(value)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid email address")
+
+
+def _base_url(request: Request) -> str:
+    return mailer.public_base_url(str(request.base_url))
 
 
 def _normalize_tag_ids(raw_ids: List[int]) -> List[int]:
@@ -237,6 +253,7 @@ def create_event_form(request: Request) -> HTMLResponse:
 @app.post("/create")
 def create_event_submit(
     request: Request,
+    background_tasks: BackgroundTasks,
     name: str = Form(..., min_length=1, max_length=120),
     description: Optional[str] = Form(None),
     event_date: Optional[str] = Form(None),
@@ -246,7 +263,10 @@ def create_event_submit(
     host_item_names: List[str] = Form(default=[]),
     host_item_types: List[str] = Form(default=[]),
     host_item_notes: List[str] = Form(default=[]),
+    host_email: Optional[str] = Form(None),
+    notify_host: Optional[str] = Form(None),
 ) -> RedirectResponse:
+    clean_host_email = _email_or_400(host_email)
     dish_types = [
         line.strip() for line in dish_types_input.splitlines() if line.strip()
     ]
@@ -275,9 +295,12 @@ def create_event_submit(
         host_name=host_name.strip() if host_name and host_name.strip() else "The House",
         dish_types=dish_types,
         use_random_slug=bool(use_random_slug),
+        host_email=clean_host_email,
+        notify_host=bool(notify_host),
     )
 
     # Add host contributions
+    host_items: List[DishEntry] = []
     for item_name, item_type, item_notes in zip(
         host_item_names, host_item_types, host_item_notes
     ):
@@ -286,15 +309,20 @@ def create_event_submit(
             continue
         if item_type not in dish_types:
             item_type = dish_types[0]
-        add_dish(
-            DishEntry(
-                event_id=event.id,
-                contributor=event.host_name,
-                dish_name=item_name,
-                dish_type=item_type,
-                notes=item_notes.strip() if item_notes and item_notes.strip() else None,
-                is_host_item=True,
-            )
+        host_item = DishEntry(
+            event_id=event.id,
+            contributor=event.host_name,
+            dish_name=item_name,
+            dish_type=item_type,
+            notes=item_notes.strip() if item_notes and item_notes.strip() else None,
+            is_host_item=True,
+        )
+        add_dish(host_item)
+        host_items.append(host_item)
+
+    if event.host_email:
+        background_tasks.add_task(
+            notifications.send_host_welcome, event, host_items, _base_url(request)
         )
 
     return RedirectResponse(
