@@ -155,11 +155,13 @@ setting `DATABASE_URL`:
 DATABASE_URL="postgresql://user:password@host/dbname?sslmode=require"
 ```
 
-Tables are created automatically on startup. Pooled connection strings (such as
+Tables are created automatically on startup, inside their own schema named
+`dishlist` (override with `DATABASE_SCHEMA`) so DishList never touches tables that
+already exist in `public`. Pooled connection strings (such as
 Neon's `-pooler` endpoint) work. The startup log shows which database is in use
-(`Database: PostgreSQL (host=..., database=...)`) without printing credentials.
+(`Database: PostgreSQL (host=..., database=..., schema=dishlist)`) without printing credentials.
 To run the tests against Postgres, point `TEST_DATABASE_URL` at a throwaway
-database; its `public` schema is dropped for every test. See
+database; the `dishlist` schema is dropped for every test. See
 [ADR-0008](docs/adr/0008-postgresql-via-database-url.md).
 
 ## Email (optional)

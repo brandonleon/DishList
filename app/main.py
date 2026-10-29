@@ -80,24 +80,36 @@ _last_email_purge = 0.0
 
 
 def _purge_emails(force: bool = False) -> None:
-    """Wipe stored emails for finished events; throttled unless forced."""
+    """Wipe stored emails for finished events; throttled unless forced.
+
+    Best effort: a failure is logged but never stops the app from starting or
+    a page from loading.
+    """
     global _last_email_purge
     now = time.monotonic()
     if not force and _last_email_purge and now - _last_email_purge < _PURGE_INTERVAL_SECONDS:
         return
     _last_email_purge = now
-    purge_expired_emails()
+    try:
+        purge_expired_emails()
+    except Exception:
+        logging.getLogger("uvicorn.error").exception("Email retention purge failed")
 
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
-    init_db()
-    _purge_emails(force=True)
-    # uvicorn's logger so the line shows up in platform logs by default.
+    # uvicorn's logger so the lines show up in platform logs by default.
     startup_log = logging.getLogger("uvicorn.error")
+    # Logged first so it is visible even if database setup fails.
     startup_log.info("Database: %s", describe_backend())
     startup_log.info(mailer.status_summary())
-    app.state.config = load_config()
+    try:
+        init_db()
+        _purge_emails(force=True)
+        app.state.config = load_config()
+    except Exception:
+        close_pool()  # don't leave pool threads hanging a failed startup
+        raise
     try:
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         PID_PATH.write_text(str(os.getpid()))

@@ -261,6 +261,23 @@ def _postgres_url() -> Optional[str]:
     return url if url.startswith(("postgres://", "postgresql://")) else None
 
 
+DEFAULT_SCHEMA = "dishlist"
+_SCHEMA_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,62}$")
+
+
+def _schema_name() -> str:
+    """PostgreSQL schema that holds DishList's tables (DATABASE_SCHEMA, default ``dishlist``).
+
+    A dedicated schema keeps DishList from adopting, or colliding with, tables
+    of the same name that already exist in ``public`` (shared or reused
+    databases), since ``CREATE TABLE IF NOT EXISTS`` would silently reuse them.
+    """
+    name = os.environ.get("DATABASE_SCHEMA", "").strip() or DEFAULT_SCHEMA
+    if not _SCHEMA_RE.match(name):
+        raise ValueError(f"Invalid DATABASE_SCHEMA: {name!r}")
+    return name
+
+
 _pool: Any = None
 _pool_url: Optional[str] = None
 _pool_lock = threading.Lock()
@@ -306,7 +323,10 @@ def describe_backend() -> str:
 
     parsed = urlparse(url)
     database = parsed.path.lstrip("/") or "(default)"
-    return f"PostgreSQL (host={parsed.hostname}, database={database})"
+    return (
+        f"PostgreSQL (host={parsed.hostname}, database={database}, "
+        f"schema={_schema_name()})"
+    )
 
 
 def close_pool() -> None:
@@ -371,6 +391,9 @@ def _get_connection() -> Generator[_Conn, None, None]:
     if url:
         # The pool commits on success and rolls back if the block raises.
         with _get_pool(url).connection() as raw:
+            # SET LOCAL lasts for this transaction only, which is the one form
+            # of search_path change that is safe behind a transaction pooler.
+            raw.execute(f'SET LOCAL search_path TO "{_schema_name()}"')
             yield _Conn(raw, postgres=True)
         return
     DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -415,6 +438,7 @@ def init_db() -> None:
         if conn.postgres:
             # Several app instances may start at once; serialize schema setup.
             conn.execute("SELECT pg_advisory_xact_lock(727420)")
+            conn.execute(f'CREATE SCHEMA IF NOT EXISTS "{_schema_name()}"')
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS events (

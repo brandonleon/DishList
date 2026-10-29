@@ -17,7 +17,7 @@ def isolated_db(tmp_path, monkeypatch):
     """Point the DB and config file at fresh, empty storage for every test.
 
     SQLite in a temp file by default. Set TEST_DATABASE_URL to a PostgreSQL URL
-    (a throwaway database; its public schema is dropped per test) to run the
+    (a throwaway database; its ``dishlist`` schema is dropped per test) to run the
     whole suite against Postgres instead.
     """
     import app.config as config_mod
@@ -33,9 +33,9 @@ def isolated_db(tmp_path, monkeypatch):
         import psycopg
 
         monkeypatch.setenv("DATABASE_URL", pg_url)
+        monkeypatch.delenv("DATABASE_SCHEMA", raising=False)
         with psycopg.connect(pg_url, autocommit=True) as raw:
-            raw.execute("DROP SCHEMA public CASCADE")
-            raw.execute("CREATE SCHEMA public")
+            raw.execute("DROP SCHEMA IF EXISTS dishlist CASCADE")
     else:
         # Never let a developer's real DATABASE_URL leak into the test run.
         monkeypatch.delenv("DATABASE_URL", raising=False)

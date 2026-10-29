@@ -69,7 +69,7 @@ DishList stores data in SQLite (`data/dishlist.db`) by default. If your host doe
 DATABASE_URL="postgresql://user:password@host/dbname?sslmode=require"
 ```
 
-The tables are created on first start; there is nothing to migrate for a new database. The server log prints the backend in use at startup (credentials are never printed). The `dishlist admin` commands use the same `DATABASE_URL`, so run them with it set.
+The tables are created on first start, inside a dedicated PostgreSQL schema named `dishlist` (change it with `DATABASE_SCHEMA`), so DishList never reads or modifies tables that already exist in `public`. There is nothing to migrate for a new database. The server log prints the backend in use at startup (credentials are never printed). The `dishlist admin` commands use the same `DATABASE_URL`, so run them with it set.
 
 ---
 

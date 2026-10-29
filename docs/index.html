@@ -302,7 +302,7 @@ same <code>dishlist.db</code> and <code>config.json</code> the server is using.<
 <p>DishList stores data in SQLite (<code>data/dishlist.db</code>) by default. If your host does not keep the filesystem between deploys, every redeploy would erase your events, so set <code>DATABASE_URL</code> to a PostgreSQL connection string instead:</p>
 <pre><code class="language-bash">DATABASE_URL=&quot;postgresql://user:password@host/dbname?sslmode=require&quot;
 </code></pre>
-<p>The tables are created on first start; there is nothing to migrate for a new database. The server log prints the backend in use at startup (credentials are never printed). The <code>dishlist admin</code> commands use the same <code>DATABASE_URL</code>, so run them with it set.</p>
+<p>The tables are created on first start, inside a dedicated PostgreSQL schema named <code>dishlist</code> (change it with <code>DATABASE_SCHEMA</code>), so DishList never reads or modifies tables that already exist in <code>public</code>. There is nothing to migrate for a new database. The server log prints the backend in use at startup (credentials are never printed). The <code>dishlist admin</code> commands use the same <code>DATABASE_URL</code>, so run them with it set.</p>
 <hr />
 <h2 id="creating-an-event">Creating an event</h2>
 <ol>
