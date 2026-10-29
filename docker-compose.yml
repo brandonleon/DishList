@@ -5,12 +5,11 @@ services:
       - "${PORT:-8000}:8000"
     volumes:
       # Persist the SQLite database and any config files between restarts.
-      # To migrate to PostgreSQL later, remove this volume and set DATABASE_URL below.
+      # Not needed if you set DATABASE_URL to PostgreSQL below.
       - ./data:/app/data
     environment:
       PORT: "8000"
-      # DATABASE_URL is read by storage.py for future PostgreSQL migration.
-      # SQLite (default): leave unset or use sqlite:///data/dishlist.db
+      # SQLite (default): leave unset.
       # PostgreSQL: DATABASE_URL=postgresql://user:password@host:5432/dishlist
       # DATABASE_URL: ""
       # Optional email via Resend. Leave unset to disable all email features.

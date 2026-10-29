@@ -50,15 +50,14 @@ This produces `docs/index.html` from the Markdown source and the
 
 ## Data Steward Agent
 
-- Manages the `data/dishlist.db` store and verifies submissions deserialize into
-  `DishEntry` without errors.
-- Plans any future migration to a database or API integration.
+- Manages the data store (`data/dishlist.db` for SQLite, or the PostgreSQL database in
+  `DATABASE_URL`) and verifies submissions deserialize into `DishEntry` without errors.
 - Monitors file growth and rotates archives if the list becomes unwieldy.
 
 ### Data Playbook
 
-1. Back up the SQLite file with `cp data/dishlist.db data/dishlist.db.bak` before
-   large edits.
+1. Back up before large edits: `cp data/dishlist.db data/dishlist.db.bak` for SQLite, or
+   `pg_dump "$DATABASE_URL" > dishlist.sql` for PostgreSQL.
 2. Validate data by running `uv run python - <<'PY'` plus a short script that queries
    the database.
 3. When pruning, never delete without exporting—archive first, then curate the live

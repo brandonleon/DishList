@@ -61,6 +61,18 @@ docker run --rm \
 
 ---
 
+### Database
+
+DishList stores data in SQLite (`data/dishlist.db`) by default. If your host does not keep the filesystem between deploys, every redeploy would erase your events, so set `DATABASE_URL` to a PostgreSQL connection string instead:
+
+```bash
+DATABASE_URL="postgresql://user:password@host/dbname?sslmode=require"
+```
+
+The tables are created on first start; there is nothing to migrate for a new database. The server log prints the backend in use at startup (credentials are never printed). The `dishlist admin` commands use the same `DATABASE_URL`, so run them with it set.
+
+---
+
 ## Creating an event
 
 1. Go to the landing page and click **Create an Event**.
@@ -247,6 +259,10 @@ If you gave an email when creating the event, check your inbox, or open any earl
 ```bash
 sqlite3 data/dishlist.db "SELECT name, management_token FROM events;"
 ```
+or, with PostgreSQL, run `dishlist admin events token <id>` with `DATABASE_URL` set (list ids with `dishlist admin events list`).
+
+**My events disappear after every deploy.**
+Your host is wiping the local `data/` folder. Set `DATABASE_URL` to a PostgreSQL database (see Database above).
 
 **`/pantry-admin` returns 404.**
 The web admin panel is disabled. Enable it with:

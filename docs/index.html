@@ -224,6 +224,7 @@
           <div class="toc"><span class="toctitle">Contents</span><ul>
 <li><a href="#installation-startup">Installation &amp; startup</a><ul>
 <li><a href="#docker">Docker</a></li>
+<li><a href="#database">Database</a></li>
 </ul>
 </li>
 <li><a href="#creating-an-event">Creating an event</a></li>
@@ -296,6 +297,12 @@ docker run --rm \
 <p>Always mount the same <code>data/</code> volume so CLI changes are written to the
 same <code>dishlist.db</code> and <code>config.json</code> the server is using.</p>
 </blockquote>
+<hr />
+<h3 id="database">Database</h3>
+<p>DishList stores data in SQLite (<code>data/dishlist.db</code>) by default. If your host does not keep the filesystem between deploys, every redeploy would erase your events, so set <code>DATABASE_URL</code> to a PostgreSQL connection string instead:</p>
+<pre><code class="language-bash">DATABASE_URL=&quot;postgresql://user:password@host/dbname?sslmode=require&quot;
+</code></pre>
+<p>The tables are created on first start; there is nothing to migrate for a new database. The server log prints the backend in use at startup (credentials are never printed). The <code>dishlist admin</code> commands use the same <code>DATABASE_URL</code>, so run them with it set.</p>
 <hr />
 <h2 id="creating-an-event">Creating an event</h2>
 <ol>
@@ -492,6 +499,9 @@ dishlist admin web enable
 If you gave an email when creating the event, check your inbox, or open any earlier email from DishList. Otherwise retrieve it from the database:</p>
 <pre><code class="language-bash">sqlite3 data/dishlist.db &quot;SELECT name, management_token FROM events;&quot;
 </code></pre>
+<p>or, with PostgreSQL, run <code>dishlist admin events token &lt;id&gt;</code> with <code>DATABASE_URL</code> set (list ids with <code>dishlist admin events list</code>).</p>
+<p><strong>My events disappear after every deploy.</strong>
+Your host is wiping the local <code>data/</code> folder. Set <code>DATABASE_URL</code> to a PostgreSQL database (see Database above).</p>
 <p><strong><code>/pantry-admin</code> returns 404.</strong>
 The web admin panel is disabled. Enable it with:</p>
 <pre><code class="language-bash">dishlist admin web enable --network &lt;your-ip&gt;

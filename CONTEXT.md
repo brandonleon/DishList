@@ -112,7 +112,7 @@ The Host-only page for an Event, accessible via the Management Token. Allows the
 
 ## Application Config
 
-The set of system-wide settings managed by the System Admin: default Dish Types, admin IP allowlist, and Web Admin Panel toggle. The intended source of truth is the `config_entries` table in SQLite. See also [ADR-0003](./docs/adr/0003-sqlite-as-primary-datastore.md). A `data/config.json` file is kept in sync as a migration shim for deployments that predate DB-based config — the file can override the DB if it is newer (last-writer-wins by timestamp). The end state is DB-only; `config.json` is not the source of truth. See [ADR-0005](./docs/adr/0005-dual-write-config-migration-shim.md).
+The set of system-wide settings managed by the System Admin: default Dish Types, admin IP allowlist, and Web Admin Panel toggle. The intended source of truth is the `config_entries` table in the database (SQLite by default, or PostgreSQL via `DATABASE_URL`). See also [ADR-0003](./docs/adr/0003-sqlite-as-primary-datastore.md). A `data/config.json` file is kept in sync as a migration shim for deployments that predate DB-based config — the file can override the DB if it is newer (last-writer-wins by timestamp). The end state is DB-only; `config.json` is not the source of truth. See [ADR-0005](./docs/adr/0005-dual-write-config-migration-shim.md).
 
 ## System Admin
 
