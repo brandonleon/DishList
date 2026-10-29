@@ -21,5 +21,5 @@ There are no user accounts in DishList. Host identity is represented entirely by
 - Zero friction for Guests: no signup, no login, no email required.
 - Zero session management complexity: no cookies, no auth middleware, no credential storage.
 - The Management Token is the Host's only credential. If it is lost, the Host cannot access the Management Page without System Admin intervention via the CLI (`dishlist admin events list` to find the token, or direct database inspection).
-- There is no "forgot my management link" self-service flow. This is a known limitation — if a self-service recovery path becomes necessary, it should be implemented as a future feature rather than by retrofitting accounts.
+- There is no "forgot my management link" self-service flow, apart from the optional emailed link described in [ADR-0007](./0007-optional-email-via-resend.md). This is a known limitation — if a self-service recovery path becomes necessary, it should be implemented as a future feature rather than by retrofitting accounts.
 - This model assumes a single Host per Event. If co-hosting (multiple people sharing management access) becomes a requirement, this decision should be revisited.

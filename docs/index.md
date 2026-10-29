@@ -69,6 +69,7 @@ docker run --rm \
    - **Date** — optional, displayed on the board for guests.
    - **Host / household name** — how your own contributions appear on the board (e.g. *The Smokehouse*). Defaults to *The House* if left blank.
    - **Description** — a short blurb guests see when they open the link.
+   - **Your email** *(optional, only shown if the server has email set up)* — we'll email you your private management link. Guests never see it, and it is deleted after your event is over. Tick **Email me when a guest adds a dish** to get a notice for each new dish.
 3. Choose your **event URL style**:
    - **Name-based** *(default)* — derived from your event name, max 32 characters (e.g. `/e/friendsgiving-2026-wum2`). Easy to read and share.
    - **Fully random** — an 8-character code with no relation to the event name (e.g. `/e/x7k2m9p4`). Harder to guess — good for private events.
@@ -77,7 +78,7 @@ docker run --rm \
 5. Optionally add **host contributions** — dishes the house is already providing. These appear pinned at the top of the board.
 6. Click **Create Event**.
 
-After creation you land on your **management dashboard**. Bookmark that URL — it's the only way back to your host controls.
+After creation you land on your **management dashboard**. Bookmark that URL — it's the only way back to your host controls. If you gave an email, the link is also in your inbox, and you can send it to yourself again with **Email me this management link**.
 
 ---
 
@@ -189,7 +190,21 @@ dishlist admin tags reset               Reset tag library to built-in defaults
 
 dishlist admin events list              List all events
 dishlist admin events delete <id>       Delete an event and all its dishes
+
+dishlist admin email test --to <addr>   Send a test email through Resend
 ```
+
+### Email (optional)
+
+DishList can email hosts their management link and email guests a confirmation. It is off unless you set these environment variables:
+
+| Variable | Purpose |
+|---|---|
+| `RESEND_API_KEY` | Your [Resend](https://resend.com) API key. |
+| `RESEND_FROM` | Sender, e.g. `DishList <potluck@yourdomain.com>`. The domain must be verified in Resend to send to arbitrary recipients. |
+| `PUBLIC_BASE_URL` | Public origin used in email links, e.g. `https://dish.example.com`. Falls back to the request's own URL. |
+
+With these set, the create-event and add-dish forms show an optional email field. Addresses are never shown on the board and are deleted once the event is closed, its date has passed, or 30 days after creation for undated events. Guest emails tell the guest to contact the host for any change; guests have no edit link. Sends are rate-limited per IP, per recipient and per event. Check your setup with `dishlist admin email test --to you@example.com`.
 
 ### Enabling the web admin panel
 
@@ -228,7 +243,7 @@ When the web panel is enabled, it provides:
 ## Troubleshooting
 
 **I lost my management link.**
-Retrieve it from the database:
+If you gave an email when creating the event, check your inbox, or open any earlier email from DishList. Otherwise retrieve it from the database:
 ```bash
 sqlite3 data/dishlist.db "SELECT name, management_token FROM events;"
 ```

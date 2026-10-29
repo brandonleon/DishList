@@ -145,6 +145,10 @@ docker run -d --name dishlist -p 8000:8000 \
 
 Mount `data/` to persist the database and config between runs. Override the port with `-e PORT=8080`.
 
+## Email (optional)
+
+Set `RESEND_API_KEY`, `RESEND_FROM` and (recommended) `PUBLIC_BASE_URL` to let hosts receive their management link by email and guests receive a confirmation. Without them the feature is off and no email fields appear. Verify with `dishlist admin email test --to you@example.com`. See the user guide and [ADR-0007](docs/adr/0007-optional-email-via-resend.md).
+
 ### Docker Compose
 
 ```bash

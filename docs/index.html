@@ -237,6 +237,7 @@
 <li><a href="#dietary-tag-library">Dietary tag library</a></li>
 <li><a href="#administration">Administration</a><ul>
 <li><a href="#cli-reference">CLI reference</a></li>
+<li><a href="#email-optional">Email (optional)</a></li>
 <li><a href="#enabling-the-web-admin-panel">Enabling the web admin panel</a></li>
 <li><a href="#web-admin-capabilities">Web admin capabilities</a></li>
 </ul>
@@ -271,6 +272,13 @@ docker run -d --name dishlist -p 8000:8000 \
   dishlist
 </code></pre>
 <p>Mount <code>data/</code> so the database and config persist between container restarts. Override the port with <code>-e PORT=8080</code>.</p>
+<p>A <code>Justfile</code> is included for server deployments:</p>
+<pre><code class="language-bash">just deploy   # git pull + docker compose up --build --detach
+just stop     # docker compose down
+just logs     # follow container logs
+just ps       # container status
+</code></pre>
+<p>DishList is designed to run behind a reverse proxy such as Nginx Proxy Manager. It automatically trusts <code>X-Forwarded-Proto</code> and <code>X-Forwarded-For</code> headers, so HTTPS links and redirects work correctly without extra configuration.</p>
 <h4 id="admin-commands-in-docker">Admin commands in Docker</h4>
 <p>Run <code>dishlist admin</code> commands against the running container with <code>docker exec</code>, or as a one-shot using the same data volume:</p>
 <pre><code class="language-bash"># Status check
@@ -297,6 +305,7 @@ same <code>dishlist.db</code> and <code>config.json</code> the server is using.<
 <li><strong>Date</strong> — optional, displayed on the board for guests.</li>
 <li><strong>Host / household name</strong> — how your own contributions appear on the board (e.g. <em>The Smokehouse</em>). Defaults to <em>The House</em> if left blank.</li>
 <li><strong>Description</strong> — a short blurb guests see when they open the link.</li>
+<li><strong>Your email</strong> <em>(optional, only shown if the server has email set up)</em> — we'll email you your private management link. Guests never see it, and it is deleted after your event is over. Tick <strong>Email me when a guest adds a dish</strong> to get a notice for each new dish.</li>
 <li>Choose your <strong>event URL style</strong>:</li>
 <li><strong>Name-based</strong> <em>(default)</em> — derived from your event name, max 32 characters (e.g. <code>/e/friendsgiving-2026-wum2</code>). Easy to read and share.</li>
 <li><strong>Fully random</strong> — an 8-character code with no relation to the event name (e.g. <code>/e/x7k2m9p4</code>). Harder to guess — good for private events.</li>
@@ -305,7 +314,7 @@ same <code>dishlist.db</code> and <code>config.json</code> the server is using.<
 <li>Optionally add <strong>host contributions</strong> — dishes the house is already providing. These appear pinned at the top of the board.</li>
 <li>Click <strong>Create Event</strong>.</li>
 </ol>
-<p>After creation you land on your <strong>management dashboard</strong>. Bookmark that URL — it's the only way back to your host controls.</p>
+<p>After creation you land on your <strong>management dashboard</strong>. Bookmark that URL — it's the only way back to your host controls. If you gave an email, the link is also in your inbox, and you can send it to yourself again with <strong>Email me this management link</strong>.</p>
 <hr />
 <h2 id="sharing-with-guests">Sharing with guests</h2>
 <p>From the management dashboard, copy the <strong>Guest link</strong> and share it however you like — group chat, email, calendar invite. Guests don't need an account.</p>
@@ -352,6 +361,9 @@ same <code>dishlist.db</code> and <code>config.json</code> the server is using.<
 - Typing <code>prepared in a gf kitchen</code> selects <em>Prepared in a GF kitchen</em></p>
 <p>Negation phrases are detected and ignored — typing <code>peanut free</code> or <code>dairy-free</code> will <strong>not</strong> select the corresponding allergen tag.</p>
 <p>Guests can adjust any auto-suggested tag freely before submitting.</p>
+<blockquote>
+<p><strong>Need to change your submission?</strong> The guest form doesn't support editing after submission. Ask the event host to update your entry from their management dashboard.</p>
+</blockquote>
 <hr />
 <h2 id="managing-your-event">Managing your event</h2>
 <p>Your management dashboard (<code>/manage/{token}</code>) lets you:</p>
@@ -424,7 +436,34 @@ dishlist admin tags reset               Reset tag library to built-in defaults
 
 dishlist admin events list              List all events
 dishlist admin events delete &lt;id&gt;       Delete an event and all its dishes
+
+dishlist admin email test --to &lt;addr&gt;   Send a test email through Resend
 </code></pre>
+<h3 id="email-optional">Email (optional)</h3>
+<p>DishList can email hosts their management link and email guests a confirmation. It is off unless you set these environment variables:</p>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>RESEND_API_KEY</code></td>
+<td>Your <a href="https://resend.com">Resend</a> API key.</td>
+</tr>
+<tr>
+<td><code>RESEND_FROM</code></td>
+<td>Sender, e.g. <code>DishList &lt;potluck@yourdomain.com&gt;</code>. The domain must be verified in Resend to send to arbitrary recipients.</td>
+</tr>
+<tr>
+<td><code>PUBLIC_BASE_URL</code></td>
+<td>Public origin used in email links, e.g. <code>https://dish.example.com</code>. Falls back to the request's own URL.</td>
+</tr>
+</tbody>
+</table>
+<p>With these set, the create-event and add-dish forms show an optional email field. Addresses are never shown on the board and are deleted once the event is closed, its date has passed, or 30 days after creation for undated events. Guest emails tell the guest to contact the host for any change; guests have no edit link. Sends are rate-limited per IP, per recipient and per event. Check your setup with <code>dishlist admin email test --to you@example.com</code>.</p>
 <h3 id="enabling-the-web-admin-panel">Enabling the web admin panel</h3>
 <p>The web panel at <code>/pantry-admin</code> is <strong>off by default</strong>. To enable it:</p>
 <pre><code class="language-bash"># Add your IP and enable in one step
@@ -450,7 +489,7 @@ dishlist admin web enable
 <hr />
 <h2 id="troubleshooting">Troubleshooting</h2>
 <p><strong>I lost my management link.</strong>
-Retrieve it from the database:</p>
+If you gave an email when creating the event, check your inbox, or open any earlier email from DishList. Otherwise retrieve it from the database:</p>
 <pre><code class="language-bash">sqlite3 data/dishlist.db &quot;SELECT name, management_token FROM events;&quot;
 </code></pre>
 <p><strong><code>/pantry-admin</code> returns 404.</strong>
@@ -467,6 +506,8 @@ The board uses HTMX partial refreshes on search. A hard browser refresh (<code>C
 Run <code>uv run dishlist serve --no-reload</code> or set <code>DISHLIST_RELOAD=0</code>. Some environments block file-system watchers.</p>
 <p><strong>A tag auto-suggested incorrectly.</strong>
 Auto-suggest is a convenience helper — guests can uncheck any tag before submitting. Tags can be renamed or removed via <code>dishlist admin tags</code>.</p>
+<p><strong>Running behind a reverse proxy (Nginx, Caddy, etc.) and seeing mixed-content warnings or broken search.</strong>
+DishList trusts <code>X-Forwarded-Proto</code> and <code>X-Forwarded-For</code> headers automatically. Make sure your proxy is sending them — Nginx Proxy Manager does by default. If links still generate as <code>http://</code>, verify the proxy is correctly forwarding these headers to port 8000.</p>
           </article>
 
           <footer class="page-footer">
