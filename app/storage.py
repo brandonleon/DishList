@@ -1,13 +1,10 @@
-"""SQLite-backed persistence for submissions, events, and config.
+"""Persistence for submissions, events, and config.
 
-# PostgreSQL migration notes:
-# When migrating to PostgreSQL, replace the sqlite3 layer with psycopg2 or asyncpg.
-# Key differences to address:
-#   - Remove PRAGMA foreign_keys (always on in Postgres)
-#   - Replace INTEGER PRIMARY KEY AUTOINCREMENT with BIGSERIAL PRIMARY KEY
-#   - Replace datetime() SQL function calls with NOW() or CURRENT_TIMESTAMP
-#   - Replace sqlite3.connect / sqlite3.Row with psycopg2 cursor and RealDictRow
-#   - The DATABASE_URL env var format for Postgres: postgresql://user:pass@host/dbname
+SQLite is the default (a local file under ``data/``). Setting ``DATABASE_URL``
+to a ``postgresql://`` URL, for example a Neon connection string, switches to
+PostgreSQL through a small connection wrapper (:class:`_Conn`) so the queries
+below are written once, with ``?`` placeholders, and run on either backend.
+Use PostgreSQL wherever the filesystem is not persistent across deploys.
 """
 
 from __future__ import annotations
@@ -18,16 +15,19 @@ import re
 import secrets
 import sqlite3
 import string
+import threading
 from contextlib import contextmanager
-from datetime import date, datetime, timezone
-from typing import Dict, Generator, List, Optional, Sequence, Tuple
+from datetime import date, datetime, timedelta, timezone
+from functools import lru_cache
+from typing import Any, Dict, Generator, List, Optional, Sequence, Tuple
 
 from .config import AppConfig, DATA_DIR
 from .models import DishEntry, Event, Tag
 
-# Respect DATABASE_URL for future Postgres migration; currently only SQLite is supported.
-_DATABASE_URL = os.environ.get("DATABASE_URL", "")
+# SQLite file used when DATABASE_URL is not a PostgreSQL URL.
 DB_PATH = DATA_DIR / "dishlist.db"
+
+Row = Any  # sqlite3.Row or a psycopg dict row; both support row["column"]
 
 CONFIG_CATEGORY_DISH_TYPES = "dish_type"
 CONFIG_CATEGORY_ADMIN_NETWORKS = "admin_network"
@@ -251,14 +251,134 @@ def _generate_management_token() -> str:
     return secrets.token_urlsafe(32)
 
 
+def _postgres_url() -> Optional[str]:
+    """The PostgreSQL URL from DATABASE_URL, or None to use SQLite.
+
+    Read on every call so tests and operators can switch backends by changing
+    the environment; any other value (including sqlite:///...) means SQLite.
+    """
+    url = os.environ.get("DATABASE_URL", "").strip()
+    return url if url.startswith(("postgres://", "postgresql://")) else None
+
+
+_pool: Any = None
+_pool_url: Optional[str] = None
+_pool_lock = threading.Lock()
+
+
+def _get_pool(url: str) -> Any:
+    global _pool, _pool_url
+    with _pool_lock:
+        if _pool is not None and _pool_url != url:
+            _pool.close()
+            _pool = None
+        if _pool is None:
+            from psycopg.rows import dict_row
+            from psycopg_pool import ConnectionPool
+
+            _pool = ConnectionPool(
+                url,
+                min_size=1,
+                max_size=10,
+                kwargs={
+                    "row_factory": dict_row,
+                    # No server-side prepared statements: poolers such as
+                    # Neon's PgBouncer endpoint may not support them.
+                    "prepare_threshold": None,
+                    # Text columns must always decode as str, whatever the
+                    # database's own default encoding is.
+                    "client_encoding": "UTF8",
+                },
+                # Serverless Postgres drops idle connections; verify on checkout.
+                check=ConnectionPool.check_connection,
+                open=True,
+            )
+            _pool_url = url
+        return _pool
+
+
+def describe_backend() -> str:
+    """Human-readable backend for logs. Never includes credentials."""
+    url = _postgres_url()
+    if not url:
+        return f"SQLite ({DB_PATH})"
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url)
+    database = parsed.path.lstrip("/") or "(default)"
+    return f"PostgreSQL (host={parsed.hostname}, database={database})"
+
+
+def close_pool() -> None:
+    """Close the PostgreSQL pool, if one was opened."""
+    global _pool, _pool_url
+    with _pool_lock:
+        if _pool is not None:
+            _pool.close()
+        _pool = None
+        _pool_url = None
+
+
+@lru_cache(maxsize=512)
+def _pg_sql(sql: str) -> str:
+    """Translate this module's SQLite-flavoured SQL for PostgreSQL."""
+    return (
+        sql.replace("INTEGER PRIMARY KEY AUTOINCREMENT", "SERIAL PRIMARY KEY")
+        .replace("%", "%%")
+        .replace("?", "%s")
+    )
+
+
+class _Conn:
+    """Runs the same SQL on a sqlite3 or psycopg connection."""
+
+    def __init__(self, raw: Any, postgres: bool) -> None:
+        self.raw = raw
+        self.postgres = postgres
+
+    def execute(self, sql: str, params: Sequence[Any] = ()) -> Any:
+        if self.postgres:
+            cursor = self.raw.cursor()
+            cursor.execute(_pg_sql(sql), tuple(params))
+            return cursor
+        return self.raw.execute(sql, params)
+
+    def executemany(self, sql: str, rows: Sequence[Sequence[Any]]) -> Any:
+        if self.postgres:
+            cursor = self.raw.cursor()
+            cursor.executemany(_pg_sql(sql), rows)
+            return cursor
+        return self.raw.executemany(sql, rows)
+
+    def insert_returning_id(self, sql: str, params: Sequence[Any] = ()) -> int:
+        """Run an INSERT and return the new row's ``id`` on either backend."""
+        if self.postgres:
+            row = self.execute(sql + " RETURNING id", params).fetchone()
+            return row["id"]
+        new_id = self.execute(sql, params).lastrowid
+        assert new_id is not None
+        return new_id
+
+
+def _ts(column: str) -> str:
+    """SQL expression that orders an ISO-8601 text column chronologically."""
+    return f"({column})::timestamptz" if _postgres_url() else f"datetime({column})"
+
+
 @contextmanager
-def _get_connection() -> Generator[sqlite3.Connection, None, None]:
+def _get_connection() -> Generator[_Conn, None, None]:
+    url = _postgres_url()
+    if url:
+        # The pool commits on success and rolls back if the block raises.
+        with _get_pool(url).connection() as raw:
+            yield _Conn(raw, postgres=True)
+        return
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     try:
-        yield conn
+        yield _Conn(conn, postgres=False)
         conn.commit()
     except Exception:
         conn.rollback()
@@ -276,8 +396,13 @@ _ADDED_COLUMNS = (
 )
 
 
-def _add_missing_columns(conn: sqlite3.Connection) -> None:
+def _add_missing_columns(conn: _Conn) -> None:
     for table, column, definition in _ADDED_COLUMNS:
+        if conn.postgres:
+            conn.execute(
+                f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {definition}"
+            )
+            continue
         existing = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
         if column not in existing:
             conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
@@ -287,6 +412,9 @@ def init_db() -> None:
     """Create database tables and seed defaults if they do not exist."""
 
     with _get_connection() as conn:
+        if conn.postgres:
+            # Several app instances may start at once; serialize schema setup.
+            conn.execute("SELECT pg_advisory_xact_lock(727420)")
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS events (
@@ -414,7 +542,7 @@ def init_db() -> None:
 # ── Event helpers ──────────────────────────────────────────────────────────────
 
 
-def _row_to_event(row: sqlite3.Row) -> Event:
+def _row_to_event(row: Row) -> Event:
     event_date = None
     if row["event_date"]:
         try:
@@ -437,7 +565,7 @@ def _row_to_event(row: sqlite3.Row) -> Event:
     )
 
 
-def _make_unique_slug(conn: sqlite3.Connection, name: str, use_random: bool) -> str:
+def _make_unique_slug(conn: _Conn, name: str, use_random: bool) -> str:
     for _ in range(20):
         if use_random:
             slug = _random_suffix(8)
@@ -450,7 +578,7 @@ def _make_unique_slug(conn: sqlite3.Connection, name: str, use_random: bool) -> 
     raise ValueError("Could not generate a unique event slug — please try again")
 
 
-def _make_unique_token(conn: sqlite3.Connection) -> str:
+def _make_unique_token(conn: _Conn) -> str:
     for _ in range(20):
         token = _generate_management_token()
         if not conn.execute(
@@ -478,7 +606,7 @@ def create_event(
         token = _make_unique_token(conn)
         now = datetime.now(timezone.utc).isoformat()
         safe_host = host_name.strip() or "The House"
-        cursor = conn.execute(
+        event_id = conn.insert_returning_id(
             """
             INSERT INTO events (slug, management_token, name, description, event_date, host_name, dish_types, is_active, created_at, host_email, notify_host)
             VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
@@ -496,8 +624,6 @@ def create_event(
                 1 if (notify_host and host_email) else 0,
             ),
         )
-        event_id = cursor.lastrowid
-        assert event_id is not None
 
     parsed_date = None
     if event_date:
@@ -545,7 +671,7 @@ def get_event_by_id(event_id: int) -> Optional[Event]:
 def load_events() -> List[Event]:
     with _get_connection() as conn:
         rows = conn.execute(
-            "SELECT * FROM events ORDER BY datetime(created_at) DESC, id DESC"
+            f"SELECT * FROM events ORDER BY {_ts('created_at')} DESC, id DESC"
         ).fetchall()
     return [_row_to_event(r) for r in rows]
 
@@ -602,19 +728,18 @@ def purge_expired_emails(today: Optional[date] = None) -> int:
     Returns the number of addresses removed.
     """
 
-    day = (today or datetime.now(timezone.utc).date()).isoformat()
+    day = today or datetime.now(timezone.utc).date()
+    # Dates are stored as ISO text, so plain string comparison is chronological
+    # and works the same on SQLite and PostgreSQL.
+    dated_cutoff = (day - timedelta(days=EMAIL_GRACE_DAYS)).isoformat()
+    undated_cutoff = (day - timedelta(days=EMAIL_UNDATED_RETENTION_DAYS)).isoformat()
     over = """
         SELECT id FROM events WHERE
             is_active = 0
-            OR (event_date IS NOT NULL AND date(event_date) < date(?, ?))
-            OR (event_date IS NULL AND date(created_at) < date(?, ?))
+            OR (event_date IS NOT NULL AND event_date < ?)
+            OR (event_date IS NULL AND substr(created_at, 1, 10) < ?)
     """
-    params = (
-        day,
-        f"-{EMAIL_GRACE_DAYS} days",
-        day,
-        f"-{EMAIL_UNDATED_RETENTION_DAYS} days",
-    )
+    params = (dated_cutoff, undated_cutoff)
     with _get_connection() as conn:
         dishes = conn.execute(
             f"UPDATE dishes SET contributor_email = NULL "
@@ -637,7 +762,7 @@ def delete_event(event_id: int) -> None:
 # ── Dish helpers ───────────────────────────────────────────────────────────────
 
 
-def _row_to_entry(row: sqlite3.Row, tags: Optional[List[Tag]] = None) -> DishEntry:
+def _row_to_entry(row: Row, tags: Optional[List[Tag]] = None) -> DishEntry:
     tag_list = tags or []
     return DishEntry(
         id=row["id"],
@@ -663,7 +788,7 @@ def _tag_sort_key(tag: Tag) -> Tuple[int, int, str]:
 
 
 def _load_tags_for_dishes(
-    conn: sqlite3.Connection, dish_ids: Sequence[int]
+    conn: _Conn, dish_ids: Sequence[int]
 ) -> Dict[int, List[Tag]]:
     mapping: Dict[int, List[Tag]] = {}
     if not dish_ids:
@@ -692,7 +817,7 @@ def _load_tags_for_dishes(
 
 
 def _replace_dish_tags(
-    conn: sqlite3.Connection, dish_id: int, tag_ids: Sequence[int]
+    conn: _Conn, dish_id: int, tag_ids: Sequence[int]
 ) -> None:
     conn.execute("DELETE FROM dish_tags WHERE dish_id = ?", (dish_id,))
     deduped = list(dict.fromkeys(tag_ids))
@@ -710,12 +835,12 @@ def load_dishes_for_event(event_id: int) -> List[DishEntry]:
     """All dishes for an event: host items first, then guest submissions by created_at ascending."""
     with _get_connection() as conn:
         rows = conn.execute(
-            """
+            f"""
             SELECT id, event_id, contributor, dish_name, dish_type,
                    notes, is_host_item, created_at, contributor_email
             FROM dishes
             WHERE event_id = ?
-            ORDER BY is_host_item DESC, datetime(created_at) ASC, id ASC
+            ORDER BY is_host_item DESC, {_ts("created_at")} ASC, id ASC
             """,
             (event_id,),
         ).fetchall()
@@ -727,11 +852,11 @@ def load_all_dishes() -> List[DishEntry]:
     """All dishes across all events, newest first. For system-admin overview."""
     with _get_connection() as conn:
         rows = conn.execute(
-            """
+            f"""
             SELECT id, event_id, contributor, dish_name, dish_type,
                    notes, is_host_item, created_at, contributor_email
             FROM dishes
-            ORDER BY datetime(created_at) DESC, id DESC
+            ORDER BY {_ts("created_at")} DESC, id DESC
             """
         ).fetchall()
         tag_map = _load_tags_for_dishes(conn, [row["id"] for row in rows])
@@ -755,7 +880,7 @@ def get_dish(dish_id: int) -> Optional[DishEntry]:
 def add_dish(entry: DishEntry) -> int:
     """Insert a dish and return its new id."""
     with _get_connection() as conn:
-        cursor = conn.execute(
+        dish_id = conn.insert_returning_id(
             """
             INSERT INTO dishes (event_id, contributor, dish_name, dish_type,
                                 notes, is_host_item, created_at, contributor_email)
@@ -772,8 +897,6 @@ def add_dish(entry: DishEntry) -> int:
                 entry.contributor_email,
             ),
         )
-        dish_id = cursor.lastrowid
-        assert dish_id is not None
         _replace_dish_tags(conn, dish_id, entry.tag_ids)
     return dish_id
 
@@ -807,7 +930,7 @@ def delete_dish(dish_id: int) -> None:
 
 
 def _load_keywords_for_tags(
-    conn: sqlite3.Connection, tag_ids: Sequence[int]
+    conn: _Conn, tag_ids: Sequence[int]
 ) -> Dict[int, List[str]]:
     """Return a mapping of tag_id → list of keywords."""
     if not tag_ids:
@@ -824,7 +947,7 @@ def _load_keywords_for_tags(
 
 
 def _set_tag_keywords_conn(
-    conn: sqlite3.Connection, tag_id: int, keywords: List[str]
+    conn: _Conn, tag_id: int, keywords: List[str]
 ) -> None:
     """Replace all keywords for a tag within an existing connection/transaction."""
     cleaned = [kw.strip().lower() for kw in keywords if kw.strip()]
@@ -1002,12 +1125,10 @@ def create_tag(
             (cat,),
         ).fetchone()
         next_position = row["max_position"] + 1
-        cursor = conn.execute(
+        tag_id = conn.insert_returning_id(
             "INSERT INTO tags (name, category, position, is_hidden) VALUES (?, ?, ?, ?)",
             (cleaned_name, cat, next_position, 1 if is_hidden else 0),
         )
-        tag_id = cursor.lastrowid
-        assert tag_id is not None
         kw_list: List[str] = []
         if keywords:
             kw_list = [kw.strip().lower() for kw in keywords if kw.strip()]
@@ -1132,7 +1253,7 @@ def save_app_config_to_db(config: AppConfig) -> None:
 
 
 def _bulk_insert_config_entries(
-    conn: sqlite3.Connection, category: str, values: List[str], timestamp: str
+    conn: _Conn, category: str, values: List[str], timestamp: str
 ) -> None:
     if not values:
         return
@@ -1158,7 +1279,7 @@ def _latest_updated_at(rows: list) -> datetime:
 # ── Seeding ────────────────────────────────────────────────────────────────────
 
 
-def _seed_or_migrate_config_entries(conn: sqlite3.Connection) -> None:
+def _seed_or_migrate_config_entries(conn: _Conn) -> None:
     if conn.execute("SELECT COUNT(*) as count FROM config_entries").fetchone()["count"]:
         return
     timestamp = datetime.now(timezone.utc).isoformat()
@@ -1172,14 +1293,14 @@ def _seed_or_migrate_config_entries(conn: sqlite3.Connection) -> None:
     _bulk_insert_config_entries(conn, CONFIG_CATEGORY_WEB_ADMIN, ["false"], timestamp)
 
 
-def _seed_or_migrate_tags(conn: sqlite3.Connection) -> None:
+def _seed_or_migrate_tags(conn: _Conn) -> None:
     if conn.execute("SELECT COUNT(*) AS count FROM tags").fetchone()["count"] == 0:
         _insert_default_tags(conn)
     else:
         _add_missing_default_tags(conn)
 
 
-def _add_missing_default_tags(conn: sqlite3.Connection) -> None:
+def _add_missing_default_tags(conn: _Conn) -> None:
     """Add any new default tags that are absent from an existing database."""
     all_defaults: List[Tuple[str, str, bool]] = []
     for category in TAG_CATEGORY_ORDER:
@@ -1196,28 +1317,24 @@ def _add_missing_default_tags(conn: sqlite3.Connection) -> None:
             "SELECT COALESCE(MAX(position), -1) AS mp FROM tags WHERE category = ?",
             (category,),
         ).fetchone()
-        cursor = conn.execute(
+        tag_id = conn.insert_returning_id(
             "INSERT INTO tags (name, category, position, is_hidden) VALUES (?, ?, ?, ?)",
             (name, category, row["mp"] + 1, 1 if is_hidden else 0),
         )
-        tag_id = cursor.lastrowid
-        assert tag_id is not None
         kws = DEFAULT_TAG_KEYWORDS.get(name, [])
         if kws:
             _set_tag_keywords_conn(conn, tag_id, kws)
 
 
-def _insert_default_tags(conn: sqlite3.Connection) -> None:
+def _insert_default_tags(conn: _Conn) -> None:
     """Seed all default tags (visible + hidden) with their keywords."""
     for category in TAG_CATEGORY_ORDER:
         # Visible tags
         for position, name in enumerate(DEFAULT_TAG_GROUPS.get(category, [])):
-            cursor = conn.execute(
+            tag_id = conn.insert_returning_id(
                 "INSERT INTO tags (name, category, position, is_hidden) VALUES (?, ?, ?, 0)",
                 (name, category, position),
             )
-            tag_id = cursor.lastrowid
-            assert tag_id is not None
             kws = DEFAULT_TAG_KEYWORDS.get(name, [])
             if kws:
                 _set_tag_keywords_conn(conn, tag_id, kws)
@@ -1227,18 +1344,16 @@ def _insert_default_tags(conn: sqlite3.Connection) -> None:
                 "SELECT COALESCE(MAX(position), -1) AS mp FROM tags WHERE category = ?",
                 (category,),
             ).fetchone()
-            cursor = conn.execute(
+            tag_id = conn.insert_returning_id(
                 "INSERT INTO tags (name, category, position, is_hidden) VALUES (?, ?, ?, 1)",
                 (name, category, row["mp"] + 1),
             )
-            tag_id = cursor.lastrowid
-            assert tag_id is not None
             kws = DEFAULT_TAG_KEYWORDS.get(name, [])
             if kws:
                 _set_tag_keywords_conn(conn, tag_id, kws)
 
 
-def _seed_or_migrate_keywords(conn: sqlite3.Connection) -> None:
+def _seed_or_migrate_keywords(conn: _Conn) -> None:
     """Seed auto-detect keywords for existing tags that have none yet."""
     count = conn.execute("SELECT COUNT(*) AS count FROM tag_keywords").fetchone()[
         "count"

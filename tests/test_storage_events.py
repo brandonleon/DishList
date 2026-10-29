@@ -286,6 +286,8 @@ def test_init_db_adds_columns_to_old_database(tmp_path, monkeypatch):
     conn.commit()
     conn.close()
 
+    # This test exercises the SQLite migration path whatever backend the suite uses.
+    monkeypatch.delenv("DATABASE_URL", raising=False)
     monkeypatch.setattr(storage, "DB_PATH", old)
     storage.init_db()
     storage.init_db()  # idempotent
