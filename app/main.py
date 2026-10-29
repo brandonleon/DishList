@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ipaddress
 import json
+import logging
 import os
 import signal
 import time
@@ -90,6 +91,8 @@ def _purge_emails(force: bool = False) -> None:
 async def _lifespan(app: FastAPI):
     init_db()
     _purge_emails(force=True)
+    # uvicorn's logger so the line shows up in platform logs by default.
+    logging.getLogger("uvicorn.error").info(mailer.status_summary())
     app.state.config = load_config()
     try:
         DATA_DIR.mkdir(parents=True, exist_ok=True)

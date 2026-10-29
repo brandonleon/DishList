@@ -37,6 +37,25 @@ def is_configured() -> bool:
     return bool(_api_key() and _from_address())
 
 
+def status_summary() -> str:
+    """One line saying whether email is on, and what is missing if not. No secrets."""
+
+    if is_configured():
+        base = os.environ.get("PUBLIC_BASE_URL", "").strip()
+        return "Email enabled (Resend); links use " + (
+            base if base else "the request URL (PUBLIC_BASE_URL not set)"
+        )
+    missing = [
+        name
+        for name, value in (
+            ("RESEND_API_KEY", _api_key()),
+            ("RESEND_FROM", _from_address()),
+        )
+        if not value
+    ]
+    return "Email disabled: missing " + ", ".join(missing)
+
+
 def public_base_url(fallback: str = "") -> str:
     """Absolute site URL for links in emails, without a trailing slash."""
 

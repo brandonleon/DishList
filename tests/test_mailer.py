@@ -72,3 +72,21 @@ def test_public_base_url(monkeypatch):
     assert mailer.public_base_url("http://x/") == "http://x"
     monkeypatch.setenv("PUBLIC_BASE_URL", "https://dish.example.com/")
     assert mailer.public_base_url("http://x") == "https://dish.example.com"
+
+
+def test_status_summary(monkeypatch):
+    monkeypatch.delenv("RESEND_API_KEY", raising=False)
+    monkeypatch.delenv("RESEND_FROM", raising=False)
+    monkeypatch.delenv("PUBLIC_BASE_URL", raising=False)
+    assert mailer.status_summary() == (
+        "Email disabled: missing RESEND_API_KEY, RESEND_FROM"
+    )
+    monkeypatch.setenv("RESEND_API_KEY", "re_secret")
+    assert mailer.status_summary() == "Email disabled: missing RESEND_FROM"
+    monkeypatch.setenv("RESEND_FROM", "a@b.co")
+    summary = mailer.status_summary()
+    assert summary.startswith("Email enabled")
+    assert "PUBLIC_BASE_URL not set" in summary
+    assert "re_secret" not in summary
+    monkeypatch.setenv("PUBLIC_BASE_URL", "https://x.example")
+    assert "https://x.example" in mailer.status_summary()
