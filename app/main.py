@@ -4,6 +4,7 @@ import ipaddress
 import json
 import os
 import signal
+import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -48,6 +49,7 @@ from .storage import (
     init_db,
     load_dishes_for_event,
     load_events,
+    purge_expired_emails,
     load_tag_groups,
     update_dish,
     update_event,
@@ -70,9 +72,24 @@ def _handle_sigusr1(signum, frame) -> None:  # noqa: ANN001
     _do_reload_config()
 
 
+_PURGE_INTERVAL_SECONDS = 3600
+_last_email_purge = 0.0
+
+
+def _purge_emails(force: bool = False) -> None:
+    """Wipe stored emails for finished events; throttled unless forced."""
+    global _last_email_purge
+    now = time.monotonic()
+    if not force and _last_email_purge and now - _last_email_purge < _PURGE_INTERVAL_SECONDS:
+        return
+    _last_email_purge = now
+    purge_expired_emails()
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     init_db()
+    _purge_emails(force=True)
     app.state.config = load_config()
     try:
         DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -369,6 +386,7 @@ def metrics(request: Request) -> Response:
 
 @app.get("/e/{slug}", response_class=HTMLResponse)
 def event_home(request: Request, slug: str) -> HTMLResponse:
+    _purge_emails()
     event = _get_event_by_slug_or_404(slug)
     view_mode = request.query_params.get("view", "cards")
     if view_mode not in {"cards", "table"}:
@@ -517,6 +535,7 @@ def manage_event(request: Request, token: str) -> HTMLResponse:
         "manage.html",
         {
             "event": event,
+            "email_sent": request.query_params.get("email_sent") == "1",
             "host_dishes": host_dishes,
             "guest_dishes": guest_dishes,
             "tag_groups": load_tag_groups(),
@@ -568,8 +587,35 @@ def update_event_settings(
         dish_types=dish_types,
         is_active=bool(is_active),
     )
+    if not is_active:
+        _purge_emails(force=True)
     return RedirectResponse(
         url=request.url_for("manage_event", token=token),
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+@app.post("/manage/{token}/email-link")
+def email_management_link(
+    request: Request, background_tasks: BackgroundTasks, token: str
+) -> RedirectResponse:
+    """Re-send the management link to the address stored at creation.
+
+    The recipient is never taken from the request, so this cannot be used to
+    mail the link anywhere else.
+    """
+    event = _get_event_by_token_or_404(token)
+    if not (mailer.is_configured() and event.host_email):
+        raise HTTPException(status_code=400, detail="No email on file for this event")
+    background_tasks.add_task(
+        notifications.send_host_welcome,
+        event,
+        [d for d in load_dishes_for_event(event.id) if d.is_host_item],
+        _base_url(request),
+        True,
+    )
+    return RedirectResponse(
+        url=str(request.url_for("manage_event", token=token)) + "?email_sent=1",
         status_code=status.HTTP_303_SEE_OTHER,
     )
 

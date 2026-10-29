@@ -588,6 +588,47 @@ def update_event(
         )
 
 
+# How long after the event date, or after creation for undated events, stored
+# email addresses are kept before being wiped.
+EMAIL_GRACE_DAYS = 1
+EMAIL_UNDATED_RETENTION_DAYS = 30
+
+
+def purge_expired_emails(today: Optional[date] = None) -> int:
+    """Null out stored email addresses for events that are over.
+
+    An event is over once it is closed, its date passed (plus a short grace
+    period), or, with no date, it is older than EMAIL_UNDATED_RETENTION_DAYS.
+    Returns the number of addresses removed.
+    """
+
+    day = (today or datetime.now(timezone.utc).date()).isoformat()
+    over = """
+        SELECT id FROM events WHERE
+            is_active = 0
+            OR (event_date IS NOT NULL AND date(event_date) < date(?, ?))
+            OR (event_date IS NULL AND date(created_at) < date(?, ?))
+    """
+    params = (
+        day,
+        f"-{EMAIL_GRACE_DAYS} days",
+        day,
+        f"-{EMAIL_UNDATED_RETENTION_DAYS} days",
+    )
+    with _get_connection() as conn:
+        dishes = conn.execute(
+            f"UPDATE dishes SET contributor_email = NULL "
+            f"WHERE contributor_email IS NOT NULL AND event_id IN ({over})",
+            params,
+        ).rowcount
+        events = conn.execute(
+            f"UPDATE events SET host_email = NULL, notify_host = 0 "
+            f"WHERE host_email IS NOT NULL AND id IN ({over})",
+            params,
+        ).rowcount
+    return dishes + events
+
+
 def delete_event(event_id: int) -> None:
     with _get_connection() as conn:
         conn.execute("DELETE FROM events WHERE id = ?", (event_id,))
