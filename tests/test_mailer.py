@@ -79,14 +79,17 @@ def test_status_summary(monkeypatch):
     monkeypatch.delenv("RESEND_FROM", raising=False)
     monkeypatch.delenv("PUBLIC_BASE_URL", raising=False)
     assert mailer.status_summary() == (
-        "Email disabled: missing RESEND_API_KEY, RESEND_FROM"
+        "Email disabled: RESEND_API_KEY=(not set), RESEND_FROM=(not set), "
+        "PUBLIC_BASE_URL=(not set)"
     )
-    monkeypatch.setenv("RESEND_API_KEY", "re_secret")
-    assert mailer.status_summary() == "Email disabled: missing RESEND_FROM"
-    monkeypatch.setenv("RESEND_FROM", "a@b.co")
+    monkeypatch.setenv("RESEND_API_KEY", "re_secretvalue")
     summary = mailer.status_summary()
-    assert summary.startswith("Email enabled")
-    assert "PUBLIC_BASE_URL not set" in summary
-    assert "re_secret" not in summary
+    assert summary.startswith("Email disabled")
+    assert "RESEND_API_KEY=re_s..." in summary
+    assert "secretvalue" not in summary
+    monkeypatch.setenv("RESEND_FROM", "DishList <p@x.cc>")
     monkeypatch.setenv("PUBLIC_BASE_URL", "https://x.example")
-    assert "https://x.example" in mailer.status_summary()
+    assert mailer.status_summary() == (
+        "Email enabled: RESEND_API_KEY=re_s..., RESEND_FROM=DishList <p@x.cc>, "
+        "PUBLIC_BASE_URL=https://x.example"
+    )

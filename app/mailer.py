@@ -38,22 +38,22 @@ def is_configured() -> bool:
 
 
 def status_summary() -> str:
-    """One line saying whether email is on, and what is missing if not. No secrets."""
+    """One line saying whether email is on, with the settings seen.
 
-    if is_configured():
-        base = os.environ.get("PUBLIC_BASE_URL", "").strip()
-        return "Email enabled (Resend); links use " + (
-            base if base else "the request URL (PUBLIC_BASE_URL not set)"
-        )
-    missing = [
-        name
-        for name, value in (
-            ("RESEND_API_KEY", _api_key()),
-            ("RESEND_FROM", _from_address()),
-        )
-        if not value
-    ]
-    return "Email disabled: missing " + ", ".join(missing)
+    Only the first 4 characters of the API key are shown, enough to check the
+    right key was loaded without exposing it.
+    """
+
+    key = _api_key()
+    sender = _from_address()
+    base = os.environ.get("PUBLIC_BASE_URL", "").strip()
+    state = "enabled" if is_configured() else "disabled"
+    return (
+        f"Email {state}: "
+        f"RESEND_API_KEY={key[:4] + '...' if key else '(not set)'}, "
+        f"RESEND_FROM={sender or '(not set)'}, "
+        f"PUBLIC_BASE_URL={base or '(not set)'}"
+    )
 
 
 def public_base_url(fallback: str = "") -> str:
