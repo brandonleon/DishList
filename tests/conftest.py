@@ -1,5 +1,7 @@
 """Shared fixtures for DishList tests."""
 
+import os
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -12,7 +14,12 @@ from app.storage import (
 
 @pytest.fixture(autouse=True)
 def isolated_db(tmp_path, monkeypatch):
-    """Point the DB and config file at fresh temp paths for every test."""
+    """Point the DB and config file at fresh, empty storage for every test.
+
+    SQLite in a temp file by default. Set TEST_DATABASE_URL to a PostgreSQL URL
+    (a throwaway database; its public schema is dropped per test) to run the
+    whole suite against Postgres instead.
+    """
     import app.config as config_mod
     import app.storage as storage_mod
 
@@ -20,8 +27,22 @@ def isolated_db(tmp_path, monkeypatch):
     test_config = tmp_path / "test_config.json"
     monkeypatch.setattr(storage_mod, "DB_PATH", test_db)
     monkeypatch.setattr(config_mod, "CONFIG_PATH", test_config)
+
+    pg_url = os.environ.get("TEST_DATABASE_URL")
+    if pg_url:
+        import psycopg
+
+        monkeypatch.setenv("DATABASE_URL", pg_url)
+        with psycopg.connect(pg_url, autocommit=True) as raw:
+            raw.execute("DROP SCHEMA public CASCADE")
+            raw.execute("CREATE SCHEMA public")
+    else:
+        # Never let a developer's real DATABASE_URL leak into the test run.
+        monkeypatch.delenv("DATABASE_URL", raising=False)
+
     init_db()
     yield test_db
+    storage_mod.close_pool()
 
 
 @pytest.fixture(autouse=True)

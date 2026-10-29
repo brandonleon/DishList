@@ -13,7 +13,7 @@ A self-hosted potluck planner. Create an event, share the link, and let guests l
 - **CLI admin** — full `dishlist` command-line tool for managing configuration, tags, networks, and events without a browser
 - **Web admin** — optional `/pantry-admin` panel (disabled by default; enable via CLI)
 - **Prometheus metrics** — optional `/metrics` endpoint with its own IP allowlist (disabled by default; enable via CLI)
-- **SQLite storage** — single `data/dishlist.db` file, trivial to back up or mount in Docker
+- **SQLite or PostgreSQL storage** — a single `data/dishlist.db` file by default; set `DATABASE_URL` to a `postgresql://` URL (e.g. Neon) when the host's disk is not persistent
 
 ## Getting started
 
@@ -145,6 +145,23 @@ docker run -d --name dishlist -p 8000:8000 \
 
 Mount `data/` to persist the database and config between runs. Override the port with `-e PORT=8080`.
 
+## Database
+
+SQLite is the default and needs nothing. If your host wipes the filesystem on
+each deploy (FastAPI Cloud, most PaaS platforms), use PostgreSQL instead by
+setting `DATABASE_URL`:
+
+```bash
+DATABASE_URL="postgresql://user:password@host/dbname?sslmode=require"
+```
+
+Tables are created automatically on startup. Pooled connection strings (such as
+Neon's `-pooler` endpoint) work. The startup log shows which database is in use
+(`Database: PostgreSQL (host=..., database=...)`) without printing credentials.
+To run the tests against Postgres, point `TEST_DATABASE_URL` at a throwaway
+database; its `public` schema is dropped for every test. See
+[ADR-0008](docs/adr/0008-postgresql-via-database-url.md).
+
 ## Email (optional)
 
 Set `RESEND_API_KEY`, `RESEND_FROM` and (recommended) `PUBLIC_BASE_URL` to let hosts receive their management link by email and guests receive a confirmation. Without them the feature is off and no email fields appear. Verify with `dishlist admin email test --to you@example.com`. See the user guide and [ADR-0007](docs/adr/0007-optional-email-via-resend.md).
@@ -224,5 +241,5 @@ Manage tags via `dishlist admin tags` or through the web admin panel.
 
 | File | Contents |
 |---|---|
-| `data/dishlist.db` | All events, dishes, and tags (SQLite) |
+| `data/dishlist.db` | All events, dishes, and tags (SQLite; unused when `DATABASE_URL` points at PostgreSQL) |
 | `data/config.json` | Dish types, admin IP allowlist, web admin toggle |
