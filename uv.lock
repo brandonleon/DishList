@@ -169,11 +169,12 @@ toml = [
 
 [[package]]
 name = "dishlist"
-version = "0.5.0rc1"
+version = "0.5.0"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "jinja2" },
     { name = "prometheus-client" },
     { name = "pydantic" },
@@ -184,7 +185,6 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "httpx" },
     { name = "pytest" },
     { name = "pytest-cov" },
 ]
@@ -193,6 +193,7 @@ dev = [
 requires-dist = [
     { name = "click", specifier = ">=8.3.3" },
     { name = "fastapi", specifier = ">=0.115,<1" },
+    { name = "httpx", specifier = ">=0.28.1" },
     { name = "jinja2" },
     { name = "prometheus-client", specifier = ">=0.20" },
     { name = "pydantic", specifier = ">=2.10,<3" },
@@ -203,7 +204,6 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "httpx", specifier = ">=0.28.1" },
     { name = "pytest", specifier = ">=9.0.3" },
     { name = "pytest-cov", specifier = ">=7.1.0" },
 ]
