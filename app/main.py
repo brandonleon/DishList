@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 from importlib import metadata
 
 import tomllib
@@ -20,7 +20,7 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Resp
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from . import mailer, notifications, ratelimit
+from . import adminauth, mailer, notifications, ratelimit
 from .config import AppConfig, DATA_DIR, load_config, save_config
 from .metrics import (
     DISHES_TOTAL,
@@ -87,7 +87,11 @@ def _purge_emails(force: bool = False) -> None:
     """
     global _last_email_purge
     now = time.monotonic()
-    if not force and _last_email_purge and now - _last_email_purge < _PURGE_INTERVAL_SECONDS:
+    if (
+        not force
+        and _last_email_purge
+        and now - _last_email_purge < _PURGE_INTERVAL_SECONDS
+    ):
         return
     _last_email_purge = now
     try:
@@ -105,6 +109,7 @@ async def _lifespan(app: FastAPI):
     startup_log.info(mailer.status_summary())
     try:
         init_db()
+        adminauth.provision_temporary_password(startup_log)
         _purge_emails(force=True)
         app.state.config = load_config()
     except Exception:
@@ -178,6 +183,7 @@ templates.env.filters["format_dish_timestamp"] = _format_dish_timestamp
 templates.env.filters["tag_category_class"] = _tag_category_class
 templates.env.globals["app_version"] = APP_VERSION
 templates.env.globals["email_enabled"] = mailer.is_configured
+templates.env.globals["admin_login_enabled"] = adminauth.login_enabled
 
 
 def get_config() -> AppConfig:
@@ -236,12 +242,78 @@ def _filter_dishes(dishes: List[DishEntry], query: str) -> List[DishEntry]:
     return filtered
 
 
-def _check_admin_access(request: Request, config: AppConfig) -> None:
-    """Raise 404 if web admin is disabled, 403 if IP is not allowed."""
+class _AdminLoginRequired(Exception):
+    """Raised for a missing or wrong admin login."""
+
+
+@app.exception_handler(_AdminLoginRequired)
+def _admin_login_required(request: Request, exc: _AdminLoginRequired) -> HTMLResponse:
+    # Shown if the browser's login prompt is cancelled, so recovery is reachable.
+    return templates.TemplateResponse(
+        request,
+        "admin_login_required.html",
+        {"recovery_enabled": adminauth.recovery_enabled()},
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        headers={"WWW-Authenticate": 'Basic realm="DishList admin", charset="UTF-8"'},
+    )
+
+
+def _reject_cross_origin(request: Request) -> None:
+    """Refuse browser form posts that come from another site.
+
+    Browsers always send Origin on cross-site POSTs and resend Basic Auth
+    credentials automatically, so this is what stops another page submitting
+    admin forms. Clients that send no Origin (curl) are not browsers.
+    """
+    if request.method in {"GET", "HEAD", "OPTIONS"}:
+        return
+    origin = request.headers.get("origin")
+    if origin is None:
+        return
+    if urlparse(origin).netloc != request.headers.get("host", ""):
+        raise HTTPException(status_code=403, detail="Cross-origin request refused")
+
+
+def _check_admin_login(request: Request, allow_pending_change: bool) -> None:
+    """Raise 401/429 for a bad login; redirect until a temporary password is changed."""
+    if ratelimit.limiter.is_limited(
+        adminauth.FAILED_LOGIN_KEY,
+        adminauth.FAILED_LOGIN_LIMIT,
+        adminauth.FAILED_LOGIN_WINDOW,
+    ):
+        raise HTTPException(
+            status_code=429, detail="Too many failed logins; try again later"
+        )
+    credentials = adminauth.authenticate(request.headers.get("authorization"))
+    if credentials is None:
+        # Only a wrong password counts; the browser's first, bare request does not.
+        if request.headers.get("authorization"):
+            ratelimit.limiter.allow(
+                adminauth.FAILED_LOGIN_KEY,
+                adminauth.FAILED_LOGIN_LIMIT,
+                adminauth.FAILED_LOGIN_WINDOW,
+            )
+        raise _AdminLoginRequired()
+    if credentials["must_change"] and not allow_pending_change:
+        raise HTTPException(
+            status_code=status.HTTP_303_SEE_OTHER,
+            headers={"Location": str(request.url_for("admin_password_page"))},
+        )
+
+
+def _check_admin_access(
+    request: Request, config: AppConfig, allow_pending_change: bool = False
+) -> None:
+    """Gate the admin panel by password when enabled, otherwise by IP allowlist."""
+    if adminauth.login_enabled():
+        _reject_cross_origin(request)
+        _check_admin_login(request, allow_pending_change)
+        return
     if not config.web_admin_enabled:
         raise HTTPException(status_code=404, detail="Not found")
     if not _is_ip_allowed(request, config.admin_networks):
         raise HTTPException(status_code=403, detail="Admin access restricted")
+    _reject_cross_origin(request)
 
 
 def _check_metrics_access(request: Request, config: AppConfig) -> None:
@@ -883,6 +955,111 @@ def admin_page(request: Request) -> HTMLResponse:
             "tag_success": request.query_params.get("tag_success"),
             "tag_error": request.query_params.get("tag_error"),
         },
+    )
+
+
+@app.get(f"{ADMIN_PATH}/password", response_class=HTMLResponse)
+def admin_password_page(request: Request) -> HTMLResponse:
+    if not adminauth.login_enabled():
+        raise HTTPException(status_code=404, detail="Not found")
+    _check_admin_access(request, get_config(), allow_pending_change=True)
+    return templates.TemplateResponse(request, "admin_password.html")
+
+
+@app.post(f"{ADMIN_PATH}/password", response_model=None)
+def admin_password_submit(
+    request: Request,
+    new_password: str = Form(...),
+    confirm_password: str = Form(...),
+) -> Response:
+    if not adminauth.login_enabled():
+        raise HTTPException(status_code=404, detail="Not found")
+    _check_admin_access(request, get_config(), allow_pending_change=True)
+    error = adminauth.password_problem(new_password, confirm_password)
+    if error is None and adminauth.authenticate(adminauth.basic_header(new_password)):
+        error = "Choose a different password from your current one."
+    if error:
+        return templates.TemplateResponse(
+            request, "admin_password.html", {"error": error}, status_code=400
+        )
+    adminauth.change_password(new_password)
+    return _redirect_to_admin(
+        request, success="Password changed. Log in with the new one."
+    )
+
+
+def _require_recovery_enabled() -> None:
+    if not adminauth.recovery_enabled():
+        raise HTTPException(status_code=404, detail="Not found")
+
+
+@app.get(f"{ADMIN_PATH}/recover", response_class=HTMLResponse)
+def admin_recover_page(request: Request) -> HTMLResponse:
+    _require_recovery_enabled()
+    return templates.TemplateResponse(
+        request,
+        "admin_recover.html",
+        {"done": request.query_params.get("done") == "1"},
+    )
+
+
+@app.post(f"{ADMIN_PATH}/recover")
+def admin_recover_submit(
+    request: Request, background_tasks: BackgroundTasks
+) -> RedirectResponse:
+    """Email a recovery link. The recipient is only ever ADMIN_EMAIL."""
+    _require_recovery_enabled()
+    _reject_cross_origin(request)
+    if ratelimit.limiter.allow(adminauth.RECOVERY_KEY, adminauth.RECOVERY_LIMIT):
+        background_tasks.add_task(adminauth.send_recovery_email)
+    return RedirectResponse(
+        url=str(request.url_for("admin_recover_page")) + "?done=1",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+# The token is a credential: keep it out of caches and Referer headers.
+_RECOVERY_HEADERS = {"Referrer-Policy": "no-referrer", "Cache-Control": "no-store"}
+
+
+def _require_recovery_token(token: str) -> None:
+    _require_recovery_enabled()
+    if not adminauth.recovery_token_valid(token):
+        raise HTTPException(status_code=404, detail="Recovery link not valid")
+
+
+@app.get(f"{ADMIN_PATH}/recover/{{token}}", response_class=HTMLResponse)
+def admin_recover_token_page(request: Request, token: str) -> HTMLResponse:
+    _require_recovery_token(token)
+    return templates.TemplateResponse(
+        request,
+        "admin_password.html",
+        {"form_action": request.url.path},
+        headers=_RECOVERY_HEADERS,
+    )
+
+
+@app.post(f"{ADMIN_PATH}/recover/{{token}}", response_model=None)
+def admin_recover_token_submit(
+    request: Request,
+    token: str,
+    new_password: str = Form(...),
+    confirm_password: str = Form(...),
+) -> Response:
+    _reject_cross_origin(request)
+    _require_recovery_token(token)
+    error = adminauth.password_problem(new_password, confirm_password)
+    if error:
+        return templates.TemplateResponse(
+            request,
+            "admin_password.html",
+            {"error": error, "form_action": request.url.path},
+            status_code=400,
+            headers=_RECOVERY_HEADERS,
+        )
+    adminauth.change_password(new_password)
+    return _redirect_to_admin(
+        request, success="Password changed. Log in with the new one."
     )
 
 

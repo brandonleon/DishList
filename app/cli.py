@@ -100,6 +100,8 @@ def serve(host: str, port: int, reload: Optional[bool]) -> None:
         reload = raw is None or raw.lower() in {"1", "true", "yes", "on"}
 
     click.echo(f"Starting DishList on http://{host}:{port}")
+    # uvicorn reads FORWARDED_ALLOW_IPS itself; show what it will trust.
+    click.echo(f"Trusted proxies: {os.getenv('FORWARDED_ALLOW_IPS', '127.0.0.1')}")
     try:
         uvicorn.run(
             "app.main:app",
@@ -107,7 +109,6 @@ def serve(host: str, port: int, reload: Optional[bool]) -> None:
             port=port,
             reload=reload,
             proxy_headers=True,
-            forwarded_allow_ips="*",
         )
     except PermissionError:
         if not reload:
@@ -119,7 +120,6 @@ def serve(host: str, port: int, reload: Optional[bool]) -> None:
             port=port,
             reload=False,
             proxy_headers=True,
-            forwarded_allow_ips="*",
         )
 
 

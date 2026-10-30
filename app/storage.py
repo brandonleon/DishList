@@ -558,6 +558,20 @@ def init_db() -> None:
             """
         )
         _add_missing_columns(conn)
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS admin_credentials (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                password_hash TEXT NOT NULL,
+                must_change INTEGER NOT NULL,
+                expires_at TEXT,
+                reset_marker TEXT,
+                recovery_hash TEXT,
+                recovery_expires_at TEXT,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
         _seed_or_migrate_config_entries(conn)
         _seed_or_migrate_tags(conn)
         _seed_or_migrate_keywords(conn)
@@ -822,9 +836,7 @@ def _tag_sort_key(tag: Tag) -> Tuple[int, int, str]:
     return (_category_sort_index(tag.category), tag.position, tag.name.lower())
 
 
-def _load_tags_for_dishes(
-    conn: _Conn, dish_ids: Sequence[int]
-) -> Dict[int, List[Tag]]:
+def _load_tags_for_dishes(conn: _Conn, dish_ids: Sequence[int]) -> Dict[int, List[Tag]]:
     mapping: Dict[int, List[Tag]] = {}
     if not dish_ids:
         return mapping
@@ -851,9 +863,7 @@ def _load_tags_for_dishes(
     return mapping
 
 
-def _replace_dish_tags(
-    conn: _Conn, dish_id: int, tag_ids: Sequence[int]
-) -> None:
+def _replace_dish_tags(conn: _Conn, dish_id: int, tag_ids: Sequence[int]) -> None:
     conn.execute("DELETE FROM dish_tags WHERE dish_id = ?", (dish_id,))
     deduped = list(dict.fromkeys(tag_ids))
     if deduped:
@@ -1010,9 +1020,7 @@ def _load_keywords_for_tags(
     return mapping
 
 
-def _set_tag_keywords_conn(
-    conn: _Conn, tag_id: int, keywords: List[str]
-) -> None:
+def _set_tag_keywords_conn(conn: _Conn, tag_id: int, keywords: List[str]) -> None:
     """Replace all keywords for a tag within an existing connection/transaction."""
     cleaned = [kw.strip().lower() for kw in keywords if kw.strip()]
     deduped = list(dict.fromkeys(cleaned))
@@ -1313,6 +1321,76 @@ def save_app_config_to_db(config: AppConfig) -> None:
             CONFIG_CATEGORY_METRICS,
             ["true" if config.metrics_enabled else "false"],
             timestamp,
+        )
+
+
+def get_admin_credentials() -> Optional[Dict[str, Any]]:
+    with _get_connection() as conn:
+        row = conn.execute(
+            "SELECT password_hash, must_change, expires_at, reset_marker, "
+            "recovery_hash, recovery_expires_at "
+            "FROM admin_credentials WHERE id = 1"
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def provision_admin_password(
+    password_hash: str, expires_at: datetime, reset_marker: Optional[str]
+) -> bool:
+    """Store a temporary admin password if one is needed; return True if stored.
+
+    One is needed when none exists, a pending one has expired, or the reset
+    marker changed. The check and write share a lock so that of several
+    instances starting together only one stores, and logs, a password.
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    with _get_connection() as conn:
+        if conn.postgres:
+            conn.execute("SELECT pg_advisory_xact_lock(727421)")
+        else:
+            conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute(
+            "SELECT must_change, expires_at, reset_marker "
+            "FROM admin_credentials WHERE id = 1"
+        ).fetchone()
+        if row:
+            expired = bool(row["must_change"]) and row["expires_at"] <= now
+            reset = bool(reset_marker) and reset_marker != row["reset_marker"]
+            if not expired and not reset:
+                return False
+            reset_marker = reset_marker or row["reset_marker"]
+            conn.execute("DELETE FROM admin_credentials WHERE id = 1")
+        conn.execute(
+            "INSERT INTO admin_credentials "
+            "(id, password_hash, must_change, expires_at, reset_marker, updated_at) "
+            "VALUES (1, ?, 1, ?, ?, ?)",
+            (password_hash, expires_at.isoformat(), reset_marker, now),
+        )
+    return True
+
+
+def set_admin_password(password_hash: str) -> None:
+    """Replace the admin password with a permanent one."""
+    with _get_connection() as conn:
+        conn.execute(
+            "UPDATE admin_credentials SET password_hash = ?, must_change = 0, "
+            "expires_at = NULL, recovery_hash = NULL, recovery_expires_at = NULL, "
+            "updated_at = ? WHERE id = 1",
+            (password_hash, datetime.now(timezone.utc).isoformat()),
+        )
+
+
+def set_admin_recovery(recovery_hash: str, expires_at: datetime) -> None:
+    """Store a recovery token's hash; the current password keeps working until used."""
+    with _get_connection() as conn:
+        conn.execute(
+            "UPDATE admin_credentials SET recovery_hash = ?, recovery_expires_at = ?, "
+            "updated_at = ? WHERE id = 1",
+            (
+                recovery_hash,
+                expires_at.isoformat(),
+                datetime.now(timezone.utc).isoformat(),
+            ),
         )
 
 

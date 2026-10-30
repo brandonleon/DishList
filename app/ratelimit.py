@@ -50,6 +50,14 @@ class RateLimiter:
             hits.append(current)
             return True
 
+    def is_limited(self, key: str, limit: int, window: float = WINDOW_SECONDS) -> bool:
+        """Return True if ``key`` is at ``limit``, without recording a hit."""
+
+        cutoff = time.monotonic() - window
+        with self._lock:
+            hits = self._hits.get(key, ())
+            return sum(1 for hit in hits if hit > cutoff) >= limit
+
     def _sweep(self, cutoff: float) -> None:
         for key in [k for k, v in self._hits.items() if not v or v[-1] <= cutoff]:
             del self._hits[key]

@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-6 col-lg-5">
+    <h1 class="h4 fw-semibold mb-3">Reset admin password</h1>
+    {% if done %}
+    <div class="alert alert-success" role="status">
+      If recovery is available, a link is on its way to the admin email address. It works for one hour.
+    </div>
+    {% else %}
+    <p class="text-muted small">We'll email a one-time reset link to the admin email address.</p>
+    <form method="post" action="{{ url_for('admin_recover_submit') }}">
+      <button class="btn btn-primary" type="submit">Email me a reset link</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

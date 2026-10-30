@@ -1,0 +1,6 @@
+Someone asked to reset the DishList admin password.
+
+Set a new password here (works once, for one hour):
+{{ recovery_url }}
+
+If this wasn't you, ignore this email. Your current password still works.

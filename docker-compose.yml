@@ -9,9 +9,15 @@ services:
       - ./data:/app/data
     environment:
       PORT: "8000"
+      # Proxies allowed to set X-Forwarded-* (comma-separated IPs or CIDR ranges).
+      # Set this to your reverse proxy's address, as seen from this container.
+      FORWARDED_ALLOW_IPS: "${FORWARDED_ALLOW_IPS:-127.0.0.1}"
       # SQLite (default): leave unset.
       # PostgreSQL: DATABASE_URL=postgresql://user:password@host:5432/dishlist
       # DATABASE_URL: ""
+      # Web admin login, for hosts with no CLI access. See the README before enabling.
+      # ADMIN_LOGIN_ENABLED: "1"
+      # ADMIN_PASSWORD_RESET: "any-new-value"
       # Optional email via Resend. Leave unset to disable all email features.
       # RESEND_API_KEY: ""
       # RESEND_FROM: "DishList <potluck@example.com>"

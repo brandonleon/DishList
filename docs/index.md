@@ -37,7 +37,7 @@ just logs     # follow container logs
 just ps       # container status
 ```
 
-DishList is designed to run behind a reverse proxy such as Nginx Proxy Manager. It automatically trusts `X-Forwarded-Proto` and `X-Forwarded-For` headers, so HTTPS links and redirects work correctly without extra configuration.
+DishList is designed to run behind a reverse proxy such as Nginx Proxy Manager. Set `FORWARDED_ALLOW_IPS` to the proxy IPs or CIDR ranges in front of the app, as seen by the app, so HTTPS links, redirects and client IPs work correctly. Include every proxy in the chain (with a CDN, add its published ranges). Do not use `*`: it lets any client fake its IP and get past the admin and metrics allowlists.
 
 #### Admin commands in Docker
 
@@ -298,4 +298,4 @@ Run `uv run dishlist serve --no-reload` or set `DISHLIST_RELOAD=0`. Some environ
 Auto-suggest is a convenience helper — guests can uncheck any tag before submitting. Tags can be renamed or removed via `dishlist admin tags`.
 
 **Running behind a reverse proxy (Nginx, Caddy, etc.) and seeing mixed-content warnings or broken search.**
-DishList trusts `X-Forwarded-Proto` and `X-Forwarded-For` headers automatically. Make sure your proxy is sending them — Nginx Proxy Manager does by default. If links still generate as `http://`, verify the proxy is correctly forwarding these headers to port 8000.
+DishList only accepts `X-Forwarded-Proto` and `X-Forwarded-For` from addresses listed in `FORWARDED_ALLOW_IPS`. Add your proxy's address as the app sees it, and make sure the proxy is sending the headers — Nginx Proxy Manager does by default. If links still generate as `http://`, or every visitor shows the same IP, this setting is the first thing to check.

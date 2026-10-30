@@ -185,9 +185,9 @@ just ps       # show container status
 
 ### Reverse proxy / HTTPS
 
-DishList is configured to run behind a reverse proxy (e.g. Nginx Proxy Manager). The server automatically trusts `X-Forwarded-Proto` and `X-Forwarded-For` headers, so URLs and redirects work correctly over HTTPS without any extra configuration.
+DishList is configured to run behind a reverse proxy (e.g. Nginx Proxy Manager). Set `FORWARDED_ALLOW_IPS` to a comma-separated list of the proxy IPs or CIDR ranges in front of the app, as seen by the app. Only those proxies can set `X-Forwarded-Proto` and `X-Forwarded-For`, which is what makes URLs, redirects and client IPs correct. The default is `127.0.0.1`. Include every proxy in the chain (with a CDN, add its published ranges), and do not use `*`: it lets any client fake its IP and get past the admin and metrics allowlists.
 
-Ensure your proxy passes the standard forwarded headers. Nginx Proxy Manager does this by default.
+Ensure your proxy passes the standard forwarded headers. Nginx Proxy Manager does this by default. The app port must only be reachable through the proxy, or a direct client can bypass this protection if it connects from a trusted address.
 
 ### Admin commands in Docker
 

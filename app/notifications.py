@@ -19,7 +19,9 @@ from .models import DishEntry, Event
 from .storage import find_events_by_host_email, find_submissions_by_contributor_email
 
 _env = Environment(
-    loader=FileSystemLoader(str(Path(__file__).resolve().parent / "templates" / "email")),
+    loader=FileSystemLoader(
+        str(Path(__file__).resolve().parent / "templates" / "email")
+    ),
     autoescape=select_autoescape(["html"]),
     trim_blocks=True,
     lstrip_blocks=True,
@@ -110,8 +112,19 @@ def send_lookup_email(address: str, base_url: str) -> bool:
         return False
     hosted = [{"event": event, **_links(event, base_url)} for event in events]
     dishes = [
-        {"dish": dish, "event": event, "board_url": _links(event, base_url)["board_url"]}
+        {
+            "dish": dish,
+            "event": event,
+            "board_url": _links(event, base_url)["board_url"],
+        }
         for dish, event in submissions
     ]
     text, html = _render("email_lookup", hosted=hosted, dishes=dishes)
     return mailer.send_email(address, "Your DishList events and dishes", text, html)
+
+
+def send_admin_recovery(address: str, recovery_url: str) -> bool:
+    """Email the operator a one-time link for setting a new admin password."""
+
+    text, html = _render("admin_recovery", recovery_url=recovery_url)
+    return mailer.send_email(address, "Reset your DishList admin password", text, html)
