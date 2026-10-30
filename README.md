@@ -13,19 +13,17 @@ A self-hosted potluck planner. Create an event, share the link, and let guests l
 - **CLI admin** — full `dishlist` command-line tool for managing configuration, tags, networks, and events without a browser
 - **Web admin** — optional `/pantry-admin` panel (disabled by default; enable via CLI)
 - **Prometheus metrics** — optional `/metrics` endpoint with its own IP allowlist (disabled by default; enable via CLI)
-- **PostgreSQL storage** — a local container for development and self-hosting, or Neon on FastAPI Cloud; schema managed by versioned migrations
+- **SQLite or PostgreSQL storage** — a single `data/dishlist.db` file by default; set `DATABASE_URL` to a `postgresql://` URL (e.g. Neon) when the host's disk is not persistent
 
 ## Getting started
 
 ```bash
 uv sync
-docker compose up -d postgres   # local PostgreSQL on 127.0.0.1:5432
-export DATABASE_URL=postgresql://dishlist:dishlist@127.0.0.1:5432/dishlist
-uv run dishlist db upgrade      # create or upgrade the schema
-uv run dishlist serve           # local dev with live reload
-```
+uv run dishlist serve          # local dev with live reload
 
-DishList stores everything in PostgreSQL, named by the `DATABASE_URL` environment variable. Every `dishlist` command and the server itself use it. Run `dishlist db upgrade` whenever you pull a new version: the server refuses to start until the schema is current.
+# or run Uvicorn directly
+uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
 
 Visit <http://127.0.0.1:8000> and hit **Create an Event** to get started.
 
@@ -60,6 +58,8 @@ dishlist admin tags reset               Reset tag library to built-in defaults
 dishlist admin events list              List all events
 dishlist admin events delete <id>       Delete an event and all its dishes
 
+dishlist admin reload                   Reload config in the running server
+
 dishlist admin metrics status           Show /metrics endpoint status
 dishlist admin metrics enable           Enable the Prometheus /metrics endpoint
 dishlist admin metrics enable --network IP
@@ -91,13 +91,22 @@ dishlist admin web disable
 
 When disabled, `/pantry-admin` returns 404.
 
-## Configuration changes
+## Reloading configuration
 
-Every running server re-reads its configuration from the database every few
-seconds, so changes made with `dishlist admin` (locally, in a container, or
-against a remote `DATABASE_URL`) take effect everywhere within about 5 seconds,
-with no restart. The **Reload config** button in `/pantry-admin` applies them to
-that server immediately.
+After any `dishlist admin` command that changes settings, the running server
+needs to pick up the new config. You can do this without a full restart:
+
+```bash
+# Signal the running server to reload (writes data/dishlist.pid on startup)
+dishlist admin reload
+
+# Or click "Reload config" in the /pantry-admin web panel
+```
+
+The `reload` command sends `SIGUSR1` to the server process identified by
+`data/dishlist.pid`. If the PID file is absent (server not running, or
+started without the PID being written) the command exits with a clear error.
+The equivalent web button appears at the top of the `/pantry-admin` page.
 
 ## Prometheus metrics
 
@@ -124,15 +133,46 @@ allowlist get 403. Exposed metrics include `dishlist_http_requests_total`,
 `dishlist_http_request_duration_seconds`, `dishlist_events_total`, and
 `dishlist_dishes_total`.
 
-## Docker Compose
+## Docker
+
+```bash
+docker build -t dishlist .
+
+docker run -d --name dishlist -p 8000:8000 \
+  -v "$(pwd)/data:/app/data" \
+  dishlist
+```
+
+Mount `data/` to persist the database and config between runs. Override the port with `-e PORT=8080`.
+
+## Database
+
+SQLite is the default and needs nothing. If your host wipes the filesystem on
+each deploy (FastAPI Cloud, most PaaS platforms), use PostgreSQL instead by
+setting `DATABASE_URL`:
+
+```bash
+DATABASE_URL="postgresql://user:password@host/dbname?sslmode=require"
+```
+
+Tables are created automatically on startup, inside their own schema named
+`dishlist` (override with `DATABASE_SCHEMA`) so DishList never touches tables that
+already exist in `public`. Pooled connection strings (such as
+Neon's `-pooler` endpoint) work. The startup log shows which database is in use
+(`Database: PostgreSQL (host=..., database=..., schema=dishlist)`) without printing credentials.
+To run the tests against Postgres, point `TEST_DATABASE_URL` at a throwaway
+database; the `dishlist` schema is dropped for every test. See
+[ADR-0008](docs/adr/0008-postgresql-via-database-url.md).
+
+## Email (optional)
+
+Set `RESEND_API_KEY`, `RESEND_FROM` and (recommended) `PUBLIC_BASE_URL` to let hosts receive their management link by email and guests receive a confirmation. Without them the feature is off and no email fields appear. Verify with `dishlist admin email test --to you@example.com`. A "Find your events and dishes by email" page (`/find`) lets people recover lost links. See the user guide and [ADR-0007](docs/adr/0007-optional-email-via-resend.md).
+
+### Docker Compose
 
 ```bash
 docker compose up --build --detach
 ```
-
-This starts PostgreSQL (data in the `pgdata` volume) and DishList, which runs
-`dishlist db upgrade` before serving. Override the published port with `PORT`
-and the database password with `POSTGRES_PASSWORD`.
 
 A `Justfile` is included for server-side deployments:
 
@@ -151,21 +191,27 @@ Ensure your proxy passes the standard forwarded headers. Nginx Proxy Manager doe
 
 ### Admin commands in Docker
 
-Run any `dishlist admin` command inside the app container, which already has `DATABASE_URL` set:
+Run any `dishlist admin` command against a running container by exec-ing into it — or as a one-shot against the same data volume:
 
 ```bash
-docker compose exec dishlist dishlist admin status
-docker compose exec dishlist dishlist admin web enable --network 192.168.1.5
-docker compose exec dishlist dishlist admin events list
+# Check status
+docker exec dishlist dishlist admin status
+
+# Enable web admin and whitelist your IP
+docker exec dishlist dishlist admin web enable --network 192.168.1.5
+
+# Or as a one-shot (no running container needed)
+docker run --rm \
+  -v "$(pwd)/data:/app/data" \
+  dishlist dishlist admin web enable --network 192.168.1.5
+
+# Any other admin subcommand works the same way
+docker exec dishlist dishlist admin tags list
+docker exec dishlist dishlist admin events list
 ```
 
-## FastAPI Cloud
-
-DishList also deploys to [FastAPI Cloud](https://fastapicloud.com) with a
-[Neon](https://neon.tech) database. In short: `uv run fastapi deploy`, then
-`uv run fastapi cloud integrations resources connect` to attach a Neon database.
-The first start creates the tables. See the [user guide](docs/index.md#fastapi-cloud)
-for the full steps.
+> The data volume must be mounted so CLI changes are written to the same
+> `dishlist.db` and `config.json` the server is reading.
 
 ## URL structure
 
@@ -195,8 +241,7 @@ Manage tags via `dishlist admin tags` or through the web admin panel.
 
 ## Data
 
-All events, dishes, tags and settings live in the PostgreSQL database named by
-`DATABASE_URL`. The schema is defined by the Alembic migrations in
-`app/migrations/`. An empty database is set up on first start; apply later
-migrations with `dishlist db upgrade`. Back up with
-`pg_dump`, e.g. `docker compose exec postgres pg_dump -U dishlist dishlist > backup.sql`.
+| File | Contents |
+|---|---|
+| `data/dishlist.db` | All events, dishes, and tags (SQLite; unused when `DATABASE_URL` points at PostgreSQL) |
+| `data/config.json` | Dish types, admin IP allowlist, web admin toggle |

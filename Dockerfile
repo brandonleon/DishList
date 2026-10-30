@@ -19,5 +19,4 @@ ENV PATH="/app/.venv/bin:${PATH}"
 
 EXPOSE 8000
 
-# Bring the schema up to date before serving (safe: one container per database).
-CMD ["sh", "-c", "dishlist db upgrade && dishlist serve --host 0.0.0.0 --port ${PORT:-8000} --no-reload"]
+CMD ["sh", "-c", "dishlist serve --host 0.0.0.0 --port ${PORT:-8000} --no-reload"]

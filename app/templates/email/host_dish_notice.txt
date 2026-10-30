@@ -1,0 +1,13 @@
+{{ dish.contributor }} is bringing {{ dish.dish_name }} ({{ dish.dish_type }}) to "{{ event.name }}".
+{% if dish.notes %}
+
+Notes: {{ dish.notes }}
+{% endif %}
+{% if dish.tags %}
+
+Tags: {{ dish.tags | map(attribute="name") | join(", ") }}
+{% endif %}
+
+
+Guest board: {{ board_url }}
+Manage your event: {{ manage_url }}

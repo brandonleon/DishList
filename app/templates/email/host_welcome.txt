@@ -1,0 +1,25 @@
+{% if resend %}Here is your management link for "{{ event.name }}" again.{% else %}Your event "{{ event.name }}" is ready.{% endif %}
+
+
+Management link (private, keep it to yourself):
+{{ manage_url }}
+
+Share this link with your guests:
+{{ board_url }}
+
+{% if event.event_date %}Date: {{ event.event_date.strftime("%A, %B %d, %Y") }}
+{% endif %}
+Dish types: {{ event.dish_types | join(", ") }}
+{% if host_dishes %}
+
+What you're providing:
+{% for dish in host_dishes %}
+- {{ dish.dish_name }} ({{ dish.dish_type }})
+{% endfor %}
+{% endif %}
+{% if event.notify_host %}
+
+You'll get an email each time a guest adds a dish.
+{% endif %}
+
+Anyone with the management link can edit or close your event, so don't forward it. Guests who need a change to their dish should ask you; you can edit or remove any dish from the management page.

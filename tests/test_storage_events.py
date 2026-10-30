@@ -1,29 +1,31 @@
 """Unit tests for event and dish storage."""
 
-from app.models import DishEntry, Event
+from typing import Optional
+
 from app.storage import (
-    add_dish,
     create_event,
-    create_tag,
-    delete_dish,
     delete_event,
-    get_dish,
     get_event_by_management_token,
     get_event_by_slug,
-    get_tags_by_ids,
-    load_dishes_for_event,
     load_events,
     update_event,
+    add_dish,
+    delete_dish,
+    get_dish,
+    load_dishes_for_event,
+    create_tag,
+    get_tags_by_ids,
 )
+from app.models import DishEntry, Event
+
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
-
 
 def _make_event(**kwargs) -> Event:
     return create_event(
         name=kwargs.get("name", "Test Potluck"),
-        description=kwargs.get("description"),
-        event_date=kwargs.get("event_date"),
+        description=kwargs.get("description", None),
+        event_date=kwargs.get("event_date", None),
         host_name=kwargs.get("host_name", "The Host"),
         dish_types=kwargs.get("dish_types", ["Main", "Side", "Dessert"]),
         use_random_slug=kwargs.get("use_random_slug", False),
@@ -31,18 +33,15 @@ def _make_event(**kwargs) -> Event:
 
 
 def _make_dish(event_id: int, **kwargs) -> int:
-    return add_dish(
-        DishEntry(
-            event_id=event_id,
-            contributor=kwargs.get("contributor", "Alice"),
-            dish_name=kwargs.get("dish_name", "Pasta"),
-            dish_type=kwargs.get("dish_type", "Main"),
-        )
-    )
+    return add_dish(DishEntry(
+        event_id=event_id,
+        contributor=kwargs.get("contributor", "Alice"),
+        dish_name=kwargs.get("dish_name", "Pasta"),
+        dish_type=kwargs.get("dish_type", "Main"),
+    ))
 
 
 # ── Events ─────────────────────────────────────────────────────────────────────
-
 
 class TestCreateEvent:
     def test_creates_with_unique_slug(self):
@@ -61,12 +60,8 @@ class TestCreateEvent:
 
     def test_random_slug_option(self):
         event = create_event(
-            name="Secret",
-            description=None,
-            event_date=None,
-            host_name="Host",
-            dish_types=["Main"],
-            use_random_slug=True,
+            name="Secret", description=None, event_date=None,
+            host_name="Host", dish_types=["Main"], use_random_slug=True,
         )
         assert event.slug  # non-empty
 
@@ -110,13 +105,9 @@ class TestUpdateEvent:
     def test_deactivate(self):
         event = _make_event()
         update_event(
-            event_id=event.id,
-            name=event.name,
-            description=None,
-            event_date=None,
-            host_name=event.host_name,
-            dish_types=event.dish_types,
-            is_active=False,
+            event_id=event.id, name=event.name, description=None,
+            event_date=None, host_name=event.host_name,
+            dish_types=event.dish_types, is_active=False,
         )
         fetched = get_event_by_slug(event.slug)
         assert fetched is not None
@@ -154,7 +145,6 @@ class TestLoadEvents:
 
 # ── Dishes ─────────────────────────────────────────────────────────────────────
 
-
 class TestAddDish:
     def test_add_returns_id(self):
         event = _make_event()
@@ -172,30 +162,26 @@ class TestAddDish:
     def test_dish_with_tags(self):
         event = _make_event()
         tag = create_tag("Vegan test", "Dietary preferences")
-        dish_id = add_dish(
-            DishEntry(
-                event_id=event.id,
-                contributor="Alice",
-                dish_name="Salad",
-                dish_type="Side",
-                tag_ids=[tag.id],
-            )
-        )
+        dish_id = add_dish(DishEntry(
+            event_id=event.id,
+            contributor="Alice",
+            dish_name="Salad",
+            dish_type="Side",
+            tag_ids=[tag.id],
+        ))
         dish = get_dish(dish_id)
         assert dish is not None
         assert tag.id in dish.tag_ids
 
     def test_host_item_flag(self):
         event = _make_event()
-        dish_id = add_dish(
-            DishEntry(
-                event_id=event.id,
-                contributor="Host",
-                dish_name="Welcome snacks",
-                dish_type="Main",
-                is_host_item=True,
-            )
-        )
+        dish_id = add_dish(DishEntry(
+            event_id=event.id,
+            contributor="Host",
+            dish_name="Welcome snacks",
+            dish_type="Main",
+            is_host_item=True,
+        ))
         dish = get_dish(dish_id)
         assert dish is not None
         assert dish.is_host_item is True
@@ -204,23 +190,8 @@ class TestAddDish:
 class TestLoadDishesForEvent:
     def test_host_items_first(self):
         event = _make_event()
-        add_dish(
-            DishEntry(
-                event_id=event.id,
-                contributor="Guest",
-                dish_name="Salad",
-                dish_type="Side",
-            )
-        )
-        add_dish(
-            DishEntry(
-                event_id=event.id,
-                contributor="Host",
-                dish_name="Snacks",
-                dish_type="Main",
-                is_host_item=True,
-            )
-        )
+        add_dish(DishEntry(event_id=event.id, contributor="Guest", dish_name="Salad", dish_type="Side"))
+        add_dish(DishEntry(event_id=event.id, contributor="Host", dish_name="Snacks", dish_type="Main", is_host_item=True))
         dishes = load_dishes_for_event(event.id)
         assert dishes[0].is_host_item is True
 
@@ -257,3 +228,70 @@ class TestGetTagsByIds:
         tag = create_tag("Hidden test", "Content & serving", is_hidden=True)
         fetched = get_tags_by_ids([tag.id])
         assert fetched[0].is_hidden is True
+
+
+def test_email_fields_round_trip():
+    from app.models import DishEntry
+    from app.storage import add_dish, get_dish, get_event_by_id, create_event
+
+    event = create_event(
+        "Mail", None, None, "Host", ["Main"], host_email="h@x.co", notify_host=True
+    )
+    loaded = get_event_by_id(event.id)
+    assert loaded.host_email == "h@x.co"
+    assert loaded.notify_host is True
+
+    dish_id = add_dish(
+        DishEntry(
+            event_id=event.id,
+            contributor="G",
+            dish_name="Pie",
+            dish_type="Main",
+            contributor_email="g@x.co",
+        )
+    )
+    assert get_dish(dish_id).contributor_email == "g@x.co"
+
+
+def test_notify_host_requires_email():
+    from app.storage import create_event
+
+    event = create_event("NoMail", None, None, "Host", ["Main"], notify_host=True)
+    assert event.notify_host is False
+
+
+def test_init_db_adds_columns_to_old_database(tmp_path, monkeypatch):
+    import sqlite3
+
+    import app.storage as storage
+
+    old = tmp_path / "old.db"
+    conn = sqlite3.connect(old)
+    conn.execute(
+        "CREATE TABLE events (id INTEGER PRIMARY KEY AUTOINCREMENT, slug TEXT NOT NULL UNIQUE,"
+        " management_token TEXT NOT NULL UNIQUE, name TEXT NOT NULL, description TEXT,"
+        " event_date TEXT, host_name TEXT NOT NULL DEFAULT 'The House',"
+        " dish_types TEXT NOT NULL DEFAULT '[]', is_active INTEGER NOT NULL DEFAULT 1,"
+        " created_at TEXT NOT NULL)"
+    )
+    conn.execute(
+        "CREATE TABLE dishes (id INTEGER PRIMARY KEY AUTOINCREMENT, event_id INTEGER NOT NULL,"
+        " contributor TEXT NOT NULL, dish_name TEXT NOT NULL, dish_type TEXT NOT NULL,"
+        " notes TEXT, is_host_item INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL)"
+    )
+    conn.execute(
+        "INSERT INTO events (slug, management_token, name, dish_types, created_at)"
+        " VALUES ('s', 't', 'Old', '[\"Main\"]', '2025-01-01T00:00:00+00:00')"
+    )
+    conn.commit()
+    conn.close()
+
+    # This test exercises the SQLite migration path whatever backend the suite uses.
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setattr(storage, "DB_PATH", old)
+    storage.init_db()
+    storage.init_db()  # idempotent
+
+    event = storage.get_event_by_slug("s")
+    assert event.host_email is None
+    assert event.notify_host is False

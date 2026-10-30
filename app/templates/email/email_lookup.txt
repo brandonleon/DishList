@@ -1,0 +1,26 @@
+You asked DishList to look up what is associated with this email address.
+{% if hosted %}
+
+
+EVENTS YOU HOST
+{% for item in hosted %}
+
+{{ item.event.name }}{% if item.event.event_date %} ({{ item.event.event_date.strftime("%A, %B %d, %Y") }}){% endif %}
+
+  Guest link (share this): {{ item.board_url }}
+  Management link (private, don't forward): {{ item.manage_url }}
+{% endfor %}
+{% endif %}
+{% if dishes %}
+
+
+DISHES YOU'RE BRINGING
+{% for item in dishes %}
+
+{{ item.dish.dish_name }} ({{ item.dish.dish_type }}) at {{ item.event.name }}{% if item.event.event_date %}, {{ item.event.event_date.strftime("%B %d, %Y") }}{% endif %}
+
+  Event page: {{ item.board_url }}
+{% endfor %}
+
+To change or remove a dish, reach out to the event host.
+{% endif %}

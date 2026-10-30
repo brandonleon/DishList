@@ -8,7 +8,7 @@ this collector are wired in `app.main` and gated behind the
 from __future__ import annotations
 
 import time
-from collections.abc import Callable
+from typing import Callable
 
 from prometheus_client import (
     CONTENT_TYPE_LATEST,
@@ -18,6 +18,7 @@ from prometheus_client import (
     Histogram,
     generate_latest,
 )
+from starlette.requests import Request
 from starlette.responses import Response
 from starlette.types import ASGIApp, Receive, Scope, Send
 

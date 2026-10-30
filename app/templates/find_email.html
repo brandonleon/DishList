@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+
+{% block nav_actions %}
+<a class="btn btn-outline-secondary px-3" href="{{ url_for('landing') }}">Home</a>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-6">
+    <div class="card shadow-sm">
+      <div class="card-body p-4 p-lg-5">
+        <p class="text-uppercase small text-muted mb-1">Lost a link?</p>
+        <h1 class="h3 mb-3">Find my events and dishes</h1>
+        <p class="text-secondary">
+          Enter the email address you gave when you created an event or added a dish.
+          We'll email you your links.
+        </p>
+
+        {% if done %}
+        <div class="alert alert-success" role="status">
+          If an event or dish is associated with this email, you will receive an email with details.
+        </div>
+        {% endif %}
+        {% if error %}
+        <div class="alert alert-danger" role="alert">{{ error }}</div>
+        {% endif %}
+
+        <form method="post" action="{{ url_for('find_by_email_submit') }}">
+          <div class="mb-3">
+            <label for="email" class="form-label fw-semibold">Email address</label>
+            <input
+              type="email" class="form-control form-control-lg" id="email" name="email"
+              placeholder="you@example.com" required maxlength="254" autocomplete="email" autofocus
+            />
+            <div class="form-text">
+              Addresses are deleted once an event is over, so only upcoming and open events can be found.
+            </div>
+          </div>
+          <button type="submit" class="btn btn-primary btn-lg px-4">Email me my links</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

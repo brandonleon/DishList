@@ -47,31 +47,6 @@ Create `/health` endpoint for container orchestration.
 
 ---
 
-## Backlog: Guest self-editing
-**Time:** 3-5h | **Priority:** Backlog (feature; needs a design decision first)
-
-Let a guest fix or remove their own submission (typo, wrong category, changed plans) without asking the host. Today the guest form is submit-only and the docs tell guests to ask the host (`docs/index.md`, "Need to change your submission?").
-
-### Why it is not a quick win
-[ADR-0004](docs/adr/0004-no-user-accounts.md) says guests have no persistent identity and there are no accounts or sessions. Editing needs some way to prove "this is my dish". Any approach has to stay inside that decision or amend it.
-
-### Options to weigh
-- **Per-dish edit link (favoured):** issue an unguessable edit token when the dish is submitted, show it once as a link ("Bookmark this to edit your dish"), and optionally remember it in the browser. Same trust model as the Management Token; no accounts.
-- **Name match:** allow editing when the contributor name matches. Rejected for now: anyone can type someone else's name.
-- **Host-only (status quo):** keep editing with the host. Zero work; the current answer.
-
-### Work (once an option is chosen):
-- [ ] Decide the option and record it as an ADR (amend or extend ADR-0004)
-- [ ] Propose it with OpenSpec (`/opsx:propose`) — new requirements in `dish-submission`, delta to `host-management` if the host should be able to revoke links
-- [ ] Storage: per-dish edit token (migration in `init_db`, see `schema-migration` spec)
-- [ ] Routes and templates: post-submit "edit link" panel; guest edit form (name, type, notes, tags; no contributor change); guest delete
-- [ ] Respect closed events: decide whether editing is allowed after the host closes submissions
-- [ ] Tests, docs update (remove the "ask the host" note), changelog entry
-
-**Reference:** ADR-0004
-
----
-
 ## Notes
 - Start with #34 (technical debt, unblocks other work)
 - Move to #35 Option A (quick UX win)

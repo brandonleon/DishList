@@ -26,15 +26,15 @@
       </form>
     </div>
 
-    {% if flash_success %}
+    {% if tag_success %}
       <div class="alert alert-success alert-dismissible" role="alert">
-        {{ flash_success }}
+        {{ tag_success }}
         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
       </div>
     {% endif %}
-    {% if flash_error %}
+    {% if tag_error %}
       <div class="alert alert-danger alert-dismissible" role="alert">
-        {{ flash_error }}
+        {{ tag_error }}
         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
       </div>
     {% endif %}

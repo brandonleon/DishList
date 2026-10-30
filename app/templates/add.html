@@ -71,7 +71,20 @@
             {% include "partials/tag_picker.html" %}
           {% endwith %}
 
-          <p class="text-muted small mt-4 mb-2">
+          {% if email_enabled() %}
+          <div class="mt-4 mb-2">
+            <label for="contributor_email" class="form-label">Email me a copy <span class="text-muted">(optional)</span></label>
+            <input
+              type="email" class="form-control" id="contributor_email" name="contributor_email"
+              placeholder="you@example.com" maxlength="254" autocomplete="email"
+            />
+            <div class="form-text">
+              Used only to send you one confirmation. It isn't shown to anyone and is deleted after the event.
+            </div>
+          </div>
+          {% endif %}
+
+          <p class="text-muted small mt-3 mb-2">
             Need to make changes after submitting? Reach out to the event host to update your entry.
           </p>
 

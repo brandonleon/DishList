@@ -22,6 +22,11 @@
       <p class="mb-0">
         Already have a link from your host? Use it directly to see what's on the table and add your dish.
       </p>
+      {% if email_enabled() %}
+      <p class="mt-2 mb-0">
+        Lost a link? <a href="{{ url_for('find_by_email_form') }}">Find your events and dishes by email</a>.
+      </p>
+      {% endif %}
     </div>
   </div>
 </div>

@@ -16,25 +16,19 @@
   </div>
 </div>
 
-{% include "partials/flash.html" %}
-
-{% set all_dishes = host_dishes + guest_dishes %}
-{% set total_dishes = all_dishes | length %}
-{% set palette = ['#8FBCBB', '#5E81AC', '#A3BE8C', '#B48EAD', '#88C0D0', '#BF616A', '#EBCB8B'] %}
-{% set ns = namespace(cum=0, gradient='') %}
-
-<div class="row g-4">
-  <!-- ══════════════════════════ LEFT RAIL ══════════════════════════ -->
-  <div class="col-lg-4">
-
-    <!-- Links -->
-    <div class="card shadow-sm mb-4">
-      <div class="card-body p-4">
-        <h1 class="h5 mb-3 fw-semibold">{{ event.name }}</h1>
+<!-- ── Event links ───────────────────────────────────────────── -->
+<div class="card shadow-sm mb-4">
+  <div class="card-body p-4">
+    <h1 class="h5 mb-3 fw-semibold">{{ event.name }}</h1>
+    <div class="row g-3">
+      <div class="col-md-6">
         <label class="form-label small text-muted text-uppercase">Guest link — share this</label>
-        <div class="input-group mb-3">
-          <input type="text" class="form-control font-monospace small" id="guest-link" readonly
-                 value="{{ request.base_url }}e/{{ event.slug }}" />
+        <div class="input-group">
+          <input
+            type="text" class="form-control font-monospace small"
+            id="guest-link" readonly
+            value="{{ request.base_url }}e/{{ event.slug }}"
+          />
           <button class="btn btn-outline-secondary" type="button" onclick="copyLink('guest-link', this)" title="Copy">
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="bi bi-clipboard" viewBox="0 0 16 16">
               <path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1z"/>
@@ -42,9 +36,15 @@
             </svg>
           </button>
         </div>
+      </div>
+      <div class="col-md-6">
         <label class="form-label small text-muted text-uppercase">Management link — keep private</label>
         <div class="input-group">
-          <input type="text" class="form-control font-monospace small" id="manage-link" readonly value="{{ request.url }}" />
+          <input
+            type="text" class="form-control font-monospace small"
+            id="manage-link" readonly
+            value="{{ request.url }}"
+          />
           <button class="btn btn-outline-secondary" type="button" onclick="copyLink('manage-link', this)" title="Copy">
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="bi bi-clipboard" viewBox="0 0 16 16">
               <path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1z"/>
@@ -54,218 +54,190 @@
         </div>
       </div>
     </div>
+  </div>
+</div>
 
-    <!-- Dish breakdown (donut chart) -->
-    <div class="card shadow-sm mb-4">
-      <div class="card-body p-4">
-        <h2 class="h6 mb-3 fw-semibold">Dish breakdown</h2>
-        <div class="d-flex align-items-center gap-3">
-          <div class="dish-donut flex-shrink-0" style="background:
-            {% if total_dishes %}
-              conic-gradient(
-              {% for dt in event.dish_types %}
-                {% set count = all_dishes | selectattr('dish_type', 'equalto', dt) | list | length %}
-                {% set start = (ns.cum / total_dishes * 360) %}
-                {% set ns.cum = ns.cum + count %}
-                {% set end = (ns.cum / total_dishes * 360) %}
-                {{ palette[loop.index0 % palette | length] }} {{ '%.1f'|format(start) }}deg {{ '%.1f'|format(end) }}deg{% if not loop.last %},{% endif %}
-              {% endfor %}
-              )
-            {% else %}
-              #D8DEE9
-            {% endif %};">
-            <div class="dish-donut-hole">
-              <span class="fw-bold">{{ total_dishes }}</span>
-              <span class="text-uppercase text-muted">dishes</span>
-            </div>
-          </div>
-          <div class="flex-grow-1 d-flex flex-column gap-2">
-            {% for dt in event.dish_types %}
-              {% set count = all_dishes | selectattr('dish_type', 'equalto', dt) | list | length %}
-              <div class="d-flex align-items-center gap-2 small">
-                <span class="dish-donut-dot" style="background:{{ palette[loop.index0 % palette | length] }};"></span>
-                <span class="flex-grow-1">{{ dt }}</span>
-                <span class="text-muted fw-semibold">{{ count }}</span>
-              </div>
-            {% endfor %}
-          </div>
+{% if email_sent %}
+<div class="alert alert-success" role="alert">We've emailed the management link to the address you gave when creating this event.</div>
+{% endif %}
+{% if email_enabled() and event.host_email %}
+<form method="post" action="{{ url_for('email_management_link', token=event.management_token) }}" class="mb-4">
+  <button type="submit" class="btn btn-outline-secondary btn-sm">Email me this management link</button>
+  <span class="text-muted small ms-2">Sent to the address you gave at creation; deleted after your event.</span>
+</form>
+{% endif %}
+
+<!-- ── Event settings ────────────────────────────────────────── -->
+<div class="card shadow-sm mb-4">
+  <div class="card-body p-4">
+    <h2 class="h5 mb-3 fw-semibold">Event settings</h2>
+    <form method="post" action="{{ url_for('update_event_settings', token=event.management_token) }}">
+      <div class="row g-3 mb-3">
+        <div class="col-md-8">
+          <label for="name" class="form-label">Event name <span class="text-danger">*</span></label>
+          <input type="text" class="form-control" id="name" name="name" value="{{ event.name }}" required maxlength="120" />
+        </div>
+        <div class="col-md-4">
+          <label for="event_date" class="form-label">Date</label>
+          <input type="date" class="form-control" id="event_date" name="event_date"
+                 value="{{ event.event_date or '' }}" />
         </div>
       </div>
-    </div>
-
-    <!-- Event settings -->
-    <div class="card shadow-sm mb-4">
-      <div class="card-body p-4">
-        <h2 class="h6 mb-3 fw-semibold">Event settings</h2>
-        <form method="post" action="{{ url_for('update_event_settings', token=event.management_token) }}">
-          <div class="mb-3">
-            <label for="name" class="form-label">Event name <span class="text-danger">*</span></label>
-            <input type="text" class="form-control" id="name" name="name" value="{{ event.name }}" required maxlength="120" />
-          </div>
-          <div class="mb-3">
-            <label for="event_date" class="form-label">Date</label>
-            <input type="date" class="form-control" id="event_date" name="event_date" value="{{ event.event_date or '' }}" />
-          </div>
-          <div class="mb-3">
-            <label for="host_name" class="form-label">Host / household name</label>
-            <input type="text" class="form-control" id="host_name" name="host_name" value="{{ event.host_name }}" maxlength="80" />
-          </div>
-          <div class="mb-3 form-check">
+      <div class="row g-3 mb-3">
+        <div class="col-md-6">
+          <label for="host_name" class="form-label">Host / household name</label>
+          <input type="text" class="form-control" id="host_name" name="host_name"
+                 value="{{ event.host_name }}" maxlength="80" />
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Accepting submissions</label>
+          <div class="form-check mt-2">
             <input class="form-check-input" type="checkbox" id="is_active" name="is_active" value="1"
                    {% if event.is_active %}checked{% endif %} />
             <label class="form-check-label" for="is_active">Event is open for submissions</label>
           </div>
-          <div class="mb-3">
-            <label for="description" class="form-label">Description</label>
-            <textarea class="form-control" id="description" name="description" rows="2">{{ event.description or '' }}</textarea>
-          </div>
-          <div class="mb-3">
-            <label for="dish_types_input" class="form-label">Dish categories</label>
-            <textarea class="form-control font-monospace" id="dish_types_input" name="dish_types_input" rows="4">{{ event.dish_types | join('\n') }}</textarea>
-            <div class="form-text">One category per line.</div>
-          </div>
-          <div class="d-flex justify-content-end">
-            <button type="submit" class="btn btn-primary">Save settings</button>
-          </div>
-        </form>
+        </div>
       </div>
-    </div>
+      <div class="mb-3">
+        <label for="description" class="form-label">Description</label>
+        <textarea class="form-control" id="description" name="description" rows="2">{{ event.description or '' }}</textarea>
+      </div>
+      <div class="mb-3">
+        <label for="dish_types_input" class="form-label">Dish categories</label>
+        <textarea class="form-control font-monospace" id="dish_types_input" name="dish_types_input" rows="4">{{ event.dish_types | join('\n') }}</textarea>
+        <div class="form-text">One category per line.</div>
+      </div>
+      <div class="d-flex justify-content-end">
+        <button type="submit" class="btn btn-primary">Save settings</button>
+      </div>
+    </form>
   </div>
+</div>
 
-  <!-- ══════════════════════════ RIGHT — CONTRIBUTIONS ══════════════════════════ -->
-  <div class="col-lg-8">
-    <div class="card shadow-sm">
-      <div class="card-body p-4">
-        <div class="mb-1 d-flex justify-content-between align-items-baseline">
-          <h2 class="h5 mb-0 fw-semibold">All contributions</h2>
-          <span class="text-muted small" id="contrib-count">{{ all_dishes | length }} items · house items pinned to top</span>
-        </div>
+<!-- ── Host contributions ────────────────────────────────────── -->
+<div class="card shadow-sm mb-4">
+  <div class="card-body p-4">
+    <h2 class="h5 mb-1 fw-semibold">
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-house-fill me-1 text-primary" viewBox="0 0 16 16">
+        <path d="M8.707 1.5a1 1 0 0 0-1.414 0L.646 8.146a.5.5 0 0 0 .708.708L8 2.207l6.646 6.647a.5.5 0 0 0 .708-.708L13 5.793V2.5a.5.5 0 0 0-.5-.5h-1a.5.5 0 0 0-.5.5v1.293z"/>
+        <path d="m8 3.293 6 6V13.5a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 13.5V9.293z"/>
+      </svg>
+      House contributions
+    </h2>
+    <p class="text-muted small mb-4">These are pinned at the top of the guest board.</p>
 
-        <!-- Add a house item -->
-        <div class="tag-picker-group my-3">
-          <p class="text-uppercase small fw-semibold text-primary mb-2" style="letter-spacing:.04em;">+ Add a house contribution</p>
-          <form method="post" action="{{ url_for('add_host_item', token=event.management_token) }}" class="row g-2 align-items-end">
-            <div class="col-12 col-md-4">
-              <input type="text" class="form-control form-control-sm" name="dish_name" placeholder="e.g., Turkey" required maxlength="120" />
-            </div>
-            <div class="col-8 col-md-3">
-              <select class="form-select form-select-sm" name="dish_type" required>
-                {% for dt in event.dish_types %}
-                  <option value="{{ dt }}">{{ dt }}</option>
-                {% endfor %}
-              </select>
-            </div>
-            <div class="col-8 col-md-3">
-              <input type="text" class="form-control form-control-sm" name="notes" placeholder="Notes (optional)" />
-            </div>
-            <div class="col-4 col-md-2">
-              <button type="submit" class="btn btn-primary btn-sm w-100">Add</button>
-            </div>
-          </form>
-        </div>
+    <!-- Add host item form -->
+    <form method="post" action="{{ url_for('add_host_item', token=event.management_token) }}" class="row g-2 mb-4 align-items-end">
+      <div class="col-12 col-md-4">
+        <label class="form-label small">Dish name <span class="text-danger">*</span></label>
+        <input type="text" class="form-control form-control-sm" name="dish_name" placeholder="e.g., Turkey" required maxlength="120" />
+      </div>
+      <div class="col-8 col-md-3">
+        <label class="form-label small">Category <span class="text-danger">*</span></label>
+        <select class="form-select form-select-sm" name="dish_type" required>
+          {% for dt in event.dish_types %}
+            <option value="{{ dt }}">{{ dt }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-8 col-md-1">
+        <label class="form-label small">Notes</label>
+        <input type="text" class="form-control form-control-sm" name="notes" placeholder="" />
+      </div>
+      <div class="col-4 col-md-1">
+        <button type="submit" class="btn btn-primary btn-sm w-100">Add</button>
+      </div>
+    </form>
 
-        <!-- Search + filter (client-side) -->
-        <div class="row g-2 mb-3">
-          <div class="col-md-8">
-            <input type="search" class="form-control" id="contrib-search" placeholder="Search dishes, contributors, notes…" autocomplete="off" />
-          </div>
-          <div class="col-md-4">
-            <select class="form-select" id="contrib-category">
-              <option value="All">All categories</option>
-              {% for dt in event.dish_types %}
-                <option value="{{ dt }}">{{ dt }}</option>
-              {% endfor %}
-            </select>
-          </div>
-        </div>
-
-        <div class="table-responsive">
-          <table class="table align-middle mb-0" id="contrib-table">
-            <thead class="table-light">
+    {% if host_dishes %}
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>Dish</th><th>Type</th><th>Notes</th><th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for dish in host_dishes %}
               <tr>
-                <th class="sortable" data-sort="name">Dish <span class="sort-arrow"></span></th>
-                <th class="sortable" data-sort="type">Type <span class="sort-arrow"></span></th>
-                <th class="sortable" data-sort="contributor">Contributor <span class="sort-arrow"></span></th>
-                <th>Dietary</th>
-                <th class="sortable" data-sort="added">Added <span class="sort-arrow"></span></th>
-                <th class="text-end">Actions</th>
+                <td class="fw-semibold">{{ dish.dish_name }}</td>
+                <td>{{ dish.dish_type }}</td>
+                <td class="text-muted small">{{ dish.notes or '—' }}</td>
+                <td class="text-end">
+                  <form method="post" action="{{ url_for('delete_host_item', token=event.management_token, dish_id=dish.id) }}"
+                        onsubmit="return confirm('Remove this item?');">
+                    <button type="submit" class="btn btn-sm btn-outline-danger">Remove</button>
+                  </form>
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {% for dish in host_dishes %}
-                <tr class="row-house"
-                    data-host="1"
-                    data-name="{{ dish.dish_name | lower }}"
-                    data-type="{{ dish.dish_type }}"
-                    data-contributor="{{ event.host_name | lower }}"
-                    data-added=""
-                    data-search="{{ (dish.dish_name ~ ' ' ~ event.host_name ~ ' ' ~ dish.dish_type ~ ' ' ~ (dish.notes or '')) | lower }}">
-                  <td class="fw-semibold">{{ dish.dish_name }}</td>
-                  <td>{{ dish.dish_type }}</td>
-                  <td>{{ event.host_name }}</td>
-                  <td><span class="badge tag-pill tag-pill-house">House</span></td>
-                  <td class="text-muted small">House item</td>
-                  <td class="text-end">
-                    <div class="d-flex justify-content-end gap-2">
-                      <a class="btn btn-sm btn-outline-secondary"
-                         href="{{ url_for('manage_edit_dish_form', token=event.management_token, dish_id=dish.id) }}">Edit</a>
-                      <form method="post" action="{{ url_for('delete_host_item', token=event.management_token, dish_id=dish.id) }}"
-                            onsubmit="return confirm('Remove this item?');">
-                        <button type="submit" class="btn btn-sm btn-outline-danger">Remove</button>
-                      </form>
-                    </div>
-                  </td>
-                </tr>
-              {% endfor %}
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="text-muted small mb-0">No house items yet — add one above.</p>
+    {% endif %}
+  </div>
+</div>
 
-              {% for dish in guest_dishes %}
-                {% set dietary_tags = dish.tags | rejectattr('category', 'equalto', 'Allergen warnings') | list %}
-                <tr data-host="0"
-                    data-name="{{ dish.dish_name | lower }}"
-                    data-type="{{ dish.dish_type }}"
-                    data-contributor="{{ dish.contributor | lower }}"
-                    data-added="{{ dish.created_at }}"
-                    data-search="{{ (dish.dish_name ~ ' ' ~ dish.contributor ~ ' ' ~ dish.dish_type ~ ' ' ~ (dish.notes or '') ~ ' ' ~ (dietary_tags | map(attribute='name') | join(' '))) | lower }}">
-                  <td class="fw-semibold">{{ dish.dish_name }}</td>
-                  <td>{{ dish.dish_type }}</td>
-                  <td>{{ dish.contributor }}</td>
-                  <td>
-                    {% if dietary_tags %}
-                      <div class="d-flex flex-wrap gap-1">
-                        {% for tag in dietary_tags %}
-                          <span class="badge tag-pill {{ tag.category | tag_category_class }}">{{ tag.name }}</span>
-                        {% endfor %}
-                      </div>
-                    {% else %}
-                      <span class="text-muted">—</span>
-                    {% endif %}
-                  </td>
-                  <td class="text-nowrap small text-muted">{{ dish.created_at | format_dish_timestamp }}</td>
-                  <td class="text-end">
-                    <div class="d-flex justify-content-end gap-2">
-                      <a class="btn btn-sm btn-outline-secondary"
-                         href="{{ url_for('manage_edit_dish_form', token=event.management_token, dish_id=dish.id) }}">Edit</a>
-                      <form method="post"
-                            action="{{ url_for('manage_delete_dish', token=event.management_token, dish_id=dish.id) }}"
-                            onsubmit="return confirm('Delete this dish?');">
-                        <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
-                      </form>
-                    </div>
-                  </td>
-                </tr>
-              {% endfor %}
-
-              {% if not host_dishes and not guest_dishes %}
-                <tr id="contrib-empty-row">
-                  <td colspan="6" class="text-center py-4 text-muted">No contributions yet — add a house item above or share your guest link.</td>
-                </tr>
-              {% endif %}
-            </tbody>
-          </table>
-          <p class="text-muted small text-center py-3 mb-0 d-none" id="contrib-no-match">No contributions match your search.</p>
-        </div>
+<!-- ── Guest submissions ──────────────────────────────────────── -->
+<div class="card shadow-sm mb-4">
+  <div class="card-body p-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <div>
+        <h2 class="h5 mb-0 fw-semibold">Guest submissions</h2>
+        <p class="text-muted small mb-0">{{ guest_dishes | length }} dish{{ 'es' if guest_dishes | length != 1 else '' }}</p>
       </div>
     </div>
+    {% if guest_dishes %}
+      <div class="table-responsive">
+        <table class="table align-middle">
+          <thead class="table-light">
+            <tr>
+              <th>Dish</th><th>Type</th><th>Contributor</th>
+              <th>Dietary</th><th>Notes</th><th>Added</th>
+              <th class="text-end">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for dish in guest_dishes %}
+              <tr>
+                <td class="fw-semibold">{{ dish.dish_name }}</td>
+                <td>{{ dish.dish_type }}</td>
+                <td>{{ dish.contributor }}</td>
+                <td>
+                  {% set dietary_tags = dish.tags | rejectattr('category', 'equalto', 'Allergen warnings') | list %}
+                  {% if dietary_tags %}
+                    <div class="d-flex flex-wrap gap-1">
+                      {% for tag in dietary_tags %}
+                        <span class="badge tag-pill {{ tag.category | tag_category_class }}">{{ tag.name }}</span>
+                      {% endfor %}
+                    </div>
+                  {% else %}
+                    <span class="text-muted">None</span>
+                  {% endif %}
+                </td>
+                <td>{{ dish.notes or '—' }}</td>
+                <td class="text-nowrap small text-muted">{{ dish.created_at | format_dish_timestamp }}</td>
+                <td>
+                  <div class="d-flex justify-content-end gap-2">
+                    <a class="btn btn-sm btn-outline-secondary"
+                       href="{{ url_for('manage_edit_dish_form', token=event.management_token, dish_id=dish.id) }}">Edit</a>
+                    <form method="post"
+                          action="{{ url_for('manage_delete_dish', token=event.management_token, dish_id=dish.id) }}"
+                          onsubmit="return confirm('Delete this dish?');">
+                      <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="text-muted mb-0">No guest submissions yet. Share your event link to get started.</p>
+    {% endif %}
   </div>
 </div>
 
@@ -287,76 +259,5 @@
       }, 1500);
     });
   }
-
-  // ── Client-side search / category filter / column sort for the
-  //    contributions table. House rows always stay pinned above
-  //    guest rows; sorting only reorders the guest rows among themselves.
-  (function () {
-    const table = document.getElementById('contrib-table');
-    if (!table) return;
-    const tbody = table.querySelector('tbody');
-    const searchInput = document.getElementById('contrib-search');
-    const categorySelect = document.getElementById('contrib-category');
-    const noMatch = document.getElementById('contrib-no-match');
-    const emptyRow = document.getElementById('contrib-empty-row');
-
-    function allRows() {
-      return Array.from(tbody.querySelectorAll('tr')).filter((r) => r !== emptyRow);
-    }
-
-    function applyFilters() {
-      const q = (searchInput.value || '').trim().toLowerCase();
-      const cat = categorySelect.value;
-      let visibleCount = 0;
-      allRows().forEach((row) => {
-        const matchesCat = cat === 'All' || row.dataset.type === cat;
-        const matchesSearch = !q || (row.dataset.search || '').indexOf(q) >= 0;
-        const show = matchesCat && matchesSearch;
-        row.style.display = show ? '' : 'none';
-        if (show) visibleCount++;
-      });
-      noMatch.classList.toggle('d-none', visibleCount !== 0);
-    }
-
-    let currentSort = { field: 'name', dir: 'asc' };
-
-    function updateArrows() {
-      table.querySelectorAll('th.sortable').forEach((th) => {
-        const arrow = th.querySelector('.sort-arrow');
-        if (th.dataset.sort === currentSort.field) {
-          arrow.textContent = currentSort.dir === 'asc' ? '▲' : '▼';
-        } else {
-          arrow.textContent = '';
-        }
-      });
-    }
-
-    function sortBy(field) {
-      if (currentSort.field === field) {
-        currentSort.dir = currentSort.dir === 'asc' ? 'desc' : 'asc';
-      } else {
-        currentSort = { field, dir: 'asc' };
-      }
-      const dir = currentSort.dir === 'asc' ? 1 : -1;
-      const guestRows = allRows().filter((r) => r.dataset.host !== '1');
-      guestRows.sort((a, b) => {
-        const av = a.dataset[field] || '';
-        const bv = b.dataset[field] || '';
-        if (av < bv) return -1 * dir;
-        if (av > bv) return 1 * dir;
-        return 0;
-      });
-      guestRows.forEach((r) => tbody.appendChild(r));
-      updateArrows();
-    }
-
-    table.querySelectorAll('th.sortable').forEach((th) => {
-      th.style.cursor = 'pointer';
-      th.addEventListener('click', () => sortBy(th.dataset.sort));
-    });
-
-    if (searchInput) searchInput.addEventListener('input', applyFilters);
-    if (categorySelect) categorySelect.addEventListener('change', applyFilters);
-  })();
 </script>
 {% endblock %}

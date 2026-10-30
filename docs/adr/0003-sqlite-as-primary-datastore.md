@@ -1,6 +1,6 @@
 # ADR-0003: SQLite as the primary datastore
 
-**Status:** Accepted  
+**Status:** Accepted, extended by [ADR-0008](./0008-postgresql-via-database-url.md) (PostgreSQL is now supported via `DATABASE_URL`; SQLite remains the default)  
 **Date:** 2026-05-18
 
 ## Context

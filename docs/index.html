@@ -223,11 +223,12 @@
           <div class="toc-heading">On this page</div>
           <div class="toc"><span class="toctitle">Contents</span><ul>
 <li><a href="#installation-startup">Installation &amp; startup</a><ul>
-<li><a href="#docker-compose">Docker Compose</a></li>
-<li><a href="#fastapi-cloud">FastAPI Cloud</a></li>
+<li><a href="#docker">Docker</a></li>
+<li><a href="#database">Database</a></li>
 </ul>
 </li>
 <li><a href="#creating-an-event">Creating an event</a></li>
+<li><a href="#lost-a-link-find-your-events-and-dishes-by-email">Lost a link? Find your events and dishes by email</a></li>
 <li><a href="#sharing-with-guests">Sharing with guests</a></li>
 <li><a href="#guest-dish-submission">Guest dish submission</a><ul>
 <li><a href="#dietary-tags">Dietary Tags</a></li>
@@ -238,6 +239,7 @@
 <li><a href="#dietary-tag-library">Dietary tag library</a></li>
 <li><a href="#administration">Administration</a><ul>
 <li><a href="#cli-reference">CLI reference</a></li>
+<li><a href="#email-optional">Email (optional)</a></li>
 <li><a href="#enabling-the-web-admin-panel">Enabling the web admin panel</a></li>
 <li><a href="#web-admin-capabilities">Web admin capabilities</a></li>
 </ul>
@@ -258,17 +260,20 @@
 <hr />
 <h2 id="installation-startup">Installation &amp; startup</h2>
 <pre><code class="language-bash">uv sync
-docker compose up -d postgres   # local PostgreSQL on 127.0.0.1:5432
-export DATABASE_URL=postgresql://dishlist:dishlist@127.0.0.1:5432/dishlist
-uv run dishlist db upgrade      # create or upgrade the schema
-uv run dishlist serve           # with live reload
+uv run dishlist serve          # with live reload
+
+# or directly with Uvicorn
+uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
 </code></pre>
-<p>DishList stores everything in PostgreSQL, named by the <code>DATABASE_URL</code> environment variable. Every <code>dishlist</code> command and the server itself use it. On first start against an empty database the server creates the tables itself. After that, run <code>dishlist db upgrade</code> whenever you pull a new version: the server refuses to start until the schema is current.</p>
 <p>Visit <a href="http://127.0.0.1:8000">http://127.0.0.1:8000</a> to open DishList.</p>
-<h3 id="docker-compose">Docker Compose</h3>
-<pre><code class="language-bash">docker compose up --build --detach
+<h3 id="docker">Docker</h3>
+<pre><code class="language-bash">docker build -t dishlist .
+
+docker run -d --name dishlist -p 8000:8000 \
+  -v &quot;$(pwd)/data:/app/data&quot; \
+  dishlist
 </code></pre>
-<p>Compose runs two services: <code>postgres</code> (data kept in the <code>pgdata</code> volume) and <code>dishlist</code>, which applies pending migrations with <code>dishlist db upgrade</code> and then starts the server. Set <code>POSTGRES_PASSWORD</code> in the environment or a <code>.env</code> file to change the default database password, and <code>PORT</code> to change the published port.</p>
+<p>Mount <code>data/</code> so the database and config persist between container restarts. Override the port with <code>-e PORT=8080</code>.</p>
 <p>A <code>Justfile</code> is included for server deployments:</p>
 <pre><code class="language-bash">just deploy   # git pull + docker compose up --build --detach
 just stop     # docker compose down
@@ -276,45 +281,29 @@ just logs     # follow container logs
 just ps       # container status
 </code></pre>
 <p>DishList is designed to run behind a reverse proxy such as Nginx Proxy Manager. It automatically trusts <code>X-Forwarded-Proto</code> and <code>X-Forwarded-For</code> headers, so HTTPS links and redirects work correctly without extra configuration.</p>
-<p>By default those headers are trusted from any address. If the container is reachable by anything other than your proxy, restrict it to the proxy's address (comma-separated IPs) with the <code>FORWARDED_ALLOW_IPS</code> environment variable or <code>dishlist serve --forwarded-allow-ips</code>. The option wins over the variable. For example, in <code>docker-compose.yml</code>:</p>
-<pre><code class="language-yaml">environment:
-  FORWARDED_ALLOW_IPS: &quot;172.18.0.1&quot;
-</code></pre>
-<h4 id="upgrading">Upgrading</h4>
-<p>Back up the database, then deploy as usual. The container runs <code>dishlist db upgrade</code> before it starts serving.</p>
-<pre><code class="language-bash">docker compose exec postgres pg_dump -U dishlist dishlist &gt; dishlist-backup.sql
-just deploy
-</code></pre>
-<p><strong>Upgrading from 0.5.x or earlier:</strong> 0.6.0 moves from SQLite to PostgreSQL and does <strong>not</strong> import the old <code>data/dishlist.db</code>. Events, dishes and settings start fresh. Keep the old file (<code>cp data/dishlist.db data/dishlist-0.5.db.bak</code>) if you may want to roll back, and re-run any <code>dishlist admin</code> settings (web admin, networks, metrics) after the upgrade.</p>
 <h4 id="admin-commands-in-docker">Admin commands in Docker</h4>
-<p>Run <code>dishlist admin</code> commands inside the app container, which already has <code>DATABASE_URL</code> set:</p>
+<p>Run <code>dishlist admin</code> commands against the running container with <code>docker exec</code>, or as a one-shot using the same data volume:</p>
 <pre><code class="language-bash"># Status check
-docker compose exec dishlist dishlist admin status
+docker exec dishlist dishlist admin status
 
-# Enable web admin and add your IP
-docker compose exec dishlist dishlist admin web enable --network 192.168.1.5
+# Enable web admin and add your IP (against running container)
+docker exec dishlist dishlist admin web enable --network 192.168.1.5
+
+# Same thing as a one-shot (container doesn't need to be running)
+docker run --rm \
+  -v &quot;$(pwd)/data:/app/data&quot; \
+  dishlist dishlist admin web enable --network 192.168.1.5
 </code></pre>
-<p>Settings changed from the CLI reach the running server within about 5 seconds; no restart or reload is needed.</p>
-<h3 id="fastapi-cloud">FastAPI Cloud</h3>
-<p>DishList deploys to <a href="https://fastapicloud.com">FastAPI Cloud</a> with a <a href="https://neon.tech">Neon</a> PostgreSQL database. FastAPI Cloud finds the app through <code>[tool.fastapi]</code> in <code>pyproject.toml</code> and ignores the paths listed in <code>.fastapicloudignore</code>.</p>
-<p>First deploy:</p>
-<pre><code class="language-bash">uv run fastapi login
-uv run fastapi deploy                                  # creates the app
-uv run fastapi cloud integrations resources connect    # attach a Neon database; sets DATABASE_URL and redeploys
-</code></pre>
-<p>On its first start against the new, empty Neon database, DishList creates its tables and default data. Several instances starting at once is safe: they take turns, and only the first one does the work.</p>
-<p>Later releases that add a migration need it applied before deploying. Use Neon's <strong>direct</strong> connection string (host without <code>-pooler</code>, from the Neon console's <em>Connect</em> dialog):</p>
-<pre><code class="language-bash">DATABASE_URL=&quot;&lt;neon direct url&gt;&quot; uv run dishlist db upgrade
-uv run fastapi deploy
-</code></pre>
-<p>If the upgrade is skipped, the new deployment fails its startup check and the previous one keeps serving.</p>
-<p>Manage settings from your own machine by pointing the CLI at Neon:</p>
-<pre><code class="language-bash">DATABASE_URL=&quot;&lt;neon direct url&gt;&quot; uv run dishlist admin web enable --network &lt;your-ip&gt;
-</code></pre>
-<p>Every running instance picks up the change within about 5 seconds.</p>
 <blockquote>
-<p>FastAPI Cloud starts the app itself, so <code>dishlist serve</code> options such as <code>--forwarded-allow-ips</code> don't apply there. Check that the admin and metrics IP allowlists see your real address before relying on them.</p>
+<p>Always mount the same <code>data/</code> volume so CLI changes are written to the
+same <code>dishlist.db</code> and <code>config.json</code> the server is using.</p>
 </blockquote>
+<hr />
+<h3 id="database">Database</h3>
+<p>DishList stores data in SQLite (<code>data/dishlist.db</code>) by default. If your host does not keep the filesystem between deploys, every redeploy would erase your events, so set <code>DATABASE_URL</code> to a PostgreSQL connection string instead:</p>
+<pre><code class="language-bash">DATABASE_URL=&quot;postgresql://user:password@host/dbname?sslmode=require&quot;
+</code></pre>
+<p>The tables are created on first start, inside a dedicated PostgreSQL schema named <code>dishlist</code> (change it with <code>DATABASE_SCHEMA</code>), so DishList never reads or modifies tables that already exist in <code>public</code>. There is nothing to migrate for a new database. The server log prints the backend in use at startup (credentials are never printed). The <code>dishlist admin</code> commands use the same <code>DATABASE_URL</code>, so run them with it set.</p>
 <hr />
 <h2 id="creating-an-event">Creating an event</h2>
 <ol>
@@ -324,6 +313,7 @@ uv run fastapi deploy
 <li><strong>Date</strong> — optional, displayed on the board for guests.</li>
 <li><strong>Host / household name</strong> — how your own contributions appear on the board (e.g. <em>The Smokehouse</em>). Defaults to <em>The House</em> if left blank.</li>
 <li><strong>Description</strong> — a short blurb guests see when they open the link.</li>
+<li><strong>Your email</strong> <em>(optional, only shown if the server has email set up)</em> — we'll email you your private management link. Guests never see it, and it is deleted after your event is over. Tick <strong>Email me when a guest adds a dish</strong> to get a notice for each new dish.</li>
 <li>Choose your <strong>event URL style</strong>:</li>
 <li><strong>Name-based</strong> <em>(default)</em> — derived from your event name, max 32 characters (e.g. <code>/e/friendsgiving-2026-wum2</code>). Easy to read and share.</li>
 <li><strong>Fully random</strong> — an 8-character code with no relation to the event name (e.g. <code>/e/x7k2m9p4</code>). Harder to guess — good for private events.</li>
@@ -332,7 +322,14 @@ uv run fastapi deploy
 <li>Optionally add <strong>host contributions</strong> — dishes the house is already providing. These appear pinned at the top of the board.</li>
 <li>Click <strong>Create Event</strong>.</li>
 </ol>
-<p>After creation you land on your <strong>management dashboard</strong>. Bookmark that URL — it's the only way back to your host controls.</p>
+<p>After creation you land on your <strong>management dashboard</strong>. Bookmark that URL — it's the only way back to your host controls. If you gave an email, the link is also in your inbox, and you can send it to yourself again with <strong>Email me this management link</strong>.</p>
+<hr />
+<h2 id="lost-a-link-find-your-events-and-dishes-by-email">Lost a link? Find your events and dishes by email</h2>
+<p>If the server has email set up and you gave an email address when you created an event or added a dish, you can get your links again. Open <strong>Find your events and dishes by email</strong> on the home page (or go to <code>/find</code>), enter the address and submit.</p>
+<p>If anything is stored under that address you'll receive one email:
+- for <strong>events you host</strong>: the public guest link and your private management link;
+- for <strong>dishes you added</strong>: the link to each event's public page (no management link; ask the host for any change).</p>
+<p>The page always shows the same message — <em>"If an event or dish is associated with this email, you will receive an email with details."</em> — whether or not the address is known, so it can't be used to check who has signed up, and mistyped addresses are never emailed. Addresses are deleted once an event is over, so only live events can be found. Lookups are rate-limited.</p>
 <hr />
 <h2 id="sharing-with-guests">Sharing with guests</h2>
 <p>From the management dashboard, copy the <strong>Guest link</strong> and share it however you like — group chat, email, calendar invite. Guests don't need an account.</p>
@@ -388,7 +385,7 @@ uv run fastapi deploy
 <ul>
 <li><strong>Edit event details</strong> — name, date, description, host name, and dish categories.</li>
 <li><strong>Toggle submissions open/closed</strong> — close the event to stop accepting new dishes.</li>
-<li><strong>Add, edit, or remove host contributions</strong> — pin, fix, or unpin house dishes at any time.</li>
+<li><strong>Add or remove host contributions</strong> — pin or unpin house dishes at any time.</li>
 <li><strong>Edit or delete any guest dish</strong> — fix typos, update categories, or remove a dish.</li>
 </ul>
 <blockquote>
@@ -454,7 +451,34 @@ dishlist admin tags reset               Reset tag library to built-in defaults
 
 dishlist admin events list              List all events
 dishlist admin events delete &lt;id&gt;       Delete an event and all its dishes
+
+dishlist admin email test --to &lt;addr&gt;   Send a test email through Resend
 </code></pre>
+<h3 id="email-optional">Email (optional)</h3>
+<p>DishList can email hosts their management link and email guests a confirmation. It is off unless you set these environment variables:</p>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>RESEND_API_KEY</code></td>
+<td>Your <a href="https://resend.com">Resend</a> API key.</td>
+</tr>
+<tr>
+<td><code>RESEND_FROM</code></td>
+<td>Sender, e.g. <code>DishList &lt;potluck@yourdomain.com&gt;</code>. The domain must be verified in Resend to send to arbitrary recipients.</td>
+</tr>
+<tr>
+<td><code>PUBLIC_BASE_URL</code></td>
+<td>Public origin used in email links, e.g. <code>https://dish.example.com</code>. Falls back to the request's own URL.</td>
+</tr>
+</tbody>
+</table>
+<p>With these set, the create-event and add-dish forms show an optional email field. Addresses are never shown on the board and are deleted once the event is closed, its date has passed, or 30 days after creation for undated events. Guest emails tell the guest to contact the host for any change; guests have no edit link. Sends are rate-limited per IP, per recipient and per event. Check your setup with <code>dishlist admin email test --to you@example.com</code>.</p>
 <h3 id="enabling-the-web-admin-panel">Enabling the web admin panel</h3>
 <p>The web panel at <code>/pantry-admin</code> is <strong>off by default</strong>. To enable it:</p>
 <pre><code class="language-bash"># Add your IP and enable in one step
@@ -480,14 +504,12 @@ dishlist admin web enable
 <hr />
 <h2 id="troubleshooting">Troubleshooting</h2>
 <p><strong>I lost my management link.</strong>
-Find the event's ID, then print its management path:</p>
-<pre><code class="language-bash">dishlist admin events list
-dishlist admin events token &lt;event_id&gt;
+If you gave an email when creating the event, check your inbox, or open any earlier email from DishList. Otherwise retrieve it from the database:</p>
+<pre><code class="language-bash">sqlite3 data/dishlist.db &quot;SELECT name, management_token FROM events;&quot;
 </code></pre>
-<p><strong>The server won't start: "Database schema is at …, but this release needs …".</strong>
-The database hasn't been migrated for this version. Run <code>dishlist db upgrade</code> with the same <code>DATABASE_URL</code>. If it says "no migration history", the database already holds tables that aren't DishList's; point <code>DATABASE_URL</code> at an empty database instead.</p>
-<p><strong><code>DATABASE_URL must be set</code>.</strong>
-Every <code>dishlist</code> command needs the database URL. Export it (see <em>Installation &amp; startup</em>) or run the command inside the container with <code>docker compose exec dishlist …</code>.</p>
+<p>or, with PostgreSQL, run <code>dishlist admin events token &lt;id&gt;</code> with <code>DATABASE_URL</code> set (list ids with <code>dishlist admin events list</code>).</p>
+<p><strong>My events disappear after every deploy.</strong>
+Your host is wiping the local <code>data/</code> folder. Set <code>DATABASE_URL</code> to a PostgreSQL database (see Database above).</p>
 <p><strong><code>/pantry-admin</code> returns 404.</strong>
 The web admin panel is disabled. Enable it with:</p>
 <pre><code class="language-bash">dishlist admin web enable --network &lt;your-ip&gt;
@@ -503,7 +525,7 @@ Run <code>uv run dishlist serve --no-reload</code> or set <code>DISHLIST_RELOAD=
 <p><strong>A tag auto-suggested incorrectly.</strong>
 Auto-suggest is a convenience helper — guests can uncheck any tag before submitting. Tags can be renamed or removed via <code>dishlist admin tags</code>.</p>
 <p><strong>Running behind a reverse proxy (Nginx, Caddy, etc.) and seeing mixed-content warnings or broken search.</strong>
-DishList trusts <code>X-Forwarded-Proto</code> and <code>X-Forwarded-For</code> headers automatically. Make sure your proxy is sending them — Nginx Proxy Manager does by default. If links still generate as <code>http://</code>, verify the proxy is correctly forwarding these headers to port 8000 and that the proxy's address is allowed by <code>FORWARDED_ALLOW_IPS</code> (see above).</p>
+DishList trusts <code>X-Forwarded-Proto</code> and <code>X-Forwarded-For</code> headers automatically. Make sure your proxy is sending them — Nginx Proxy Manager does by default. If links still generate as <code>http://</code>, verify the proxy is correctly forwarding these headers to port 8000.</p>
           </article>
 
           <footer class="page-footer">
