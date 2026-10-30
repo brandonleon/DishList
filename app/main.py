@@ -291,7 +291,8 @@ def _get_dish_or_404(dish_id: int) -> DishEntry:
 # ── Public routes ──────────────────────────────────────────────────────────────
 
 
-@app.get("/", response_class=HTMLResponse)
+# HEAD is allowed on the routes uptime monitors usually probe; without it they get 405.
+@app.api_route("/", methods=["GET", "HEAD"], response_class=HTMLResponse)
 def landing(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(request, "landing.html")
 
@@ -440,7 +441,7 @@ def favicon() -> FileResponse:
     return FileResponse(STATIC_DIR / "favicon.ico", media_type="image/x-icon")
 
 
-@app.get("/health", include_in_schema=False)
+@app.api_route("/health", methods=["GET", "HEAD"], include_in_schema=False)
 def health() -> Response:
     try:
         count_events()
