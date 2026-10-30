@@ -69,7 +69,7 @@ DishList stores data in SQLite (`data/dishlist.db`) by default. If your host doe
 DATABASE_URL="postgresql://user:password@host/dbname?sslmode=require"
 ```
 
-The tables are created on first start; there is nothing to migrate for a new database. The server log prints the backend in use at startup (credentials are never printed). The `dishlist admin` commands use the same `DATABASE_URL`, so run them with it set.
+The tables are created on first start, inside a dedicated PostgreSQL schema named `dishlist` (change it with `DATABASE_SCHEMA`), so DishList never reads or modifies tables that already exist in `public`. There is nothing to migrate for a new database. The server log prints the backend in use at startup (credentials are never printed). The `dishlist admin` commands use the same `DATABASE_URL`, so run them with it set.
 
 ---
 
@@ -91,6 +91,18 @@ The tables are created on first start; there is nothing to migrate for a new dat
 6. Click **Create Event**.
 
 After creation you land on your **management dashboard**. Bookmark that URL — it's the only way back to your host controls. If you gave an email, the link is also in your inbox, and you can send it to yourself again with **Email me this management link**.
+
+---
+
+## Lost a link? Find your events and dishes by email
+
+If the server has email set up and you gave an email address when you created an event or added a dish, you can get your links again. Open **Find your events and dishes by email** on the home page (or go to `/find`), enter the address and submit.
+
+If anything is stored under that address you'll receive one email:
+- for **events you host**: the public guest link and your private management link;
+- for **dishes you added**: the link to each event's public page (no management link; ask the host for any change).
+
+The page always shows the same message — *"If an event or dish is associated with this email, you will receive an email with details."* — whether or not the address is known, so it can't be used to check who has signed up, and mistyped addresses are never emailed. Addresses are deleted once an event is over, so only live events can be found. Lookups are rate-limited.
 
 ---
 

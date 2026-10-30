@@ -155,16 +155,18 @@ setting `DATABASE_URL`:
 DATABASE_URL="postgresql://user:password@host/dbname?sslmode=require"
 ```
 
-Tables are created automatically on startup. Pooled connection strings (such as
+Tables are created automatically on startup, inside their own schema named
+`dishlist` (override with `DATABASE_SCHEMA`) so DishList never touches tables that
+already exist in `public`. Pooled connection strings (such as
 Neon's `-pooler` endpoint) work. The startup log shows which database is in use
-(`Database: PostgreSQL (host=..., database=...)`) without printing credentials.
+(`Database: PostgreSQL (host=..., database=..., schema=dishlist)`) without printing credentials.
 To run the tests against Postgres, point `TEST_DATABASE_URL` at a throwaway
-database; its `public` schema is dropped for every test. See
+database; the `dishlist` schema is dropped for every test. See
 [ADR-0008](docs/adr/0008-postgresql-via-database-url.md).
 
 ## Email (optional)
 
-Set `RESEND_API_KEY`, `RESEND_FROM` and (recommended) `PUBLIC_BASE_URL` to let hosts receive their management link by email and guests receive a confirmation. Without them the feature is off and no email fields appear. Verify with `dishlist admin email test --to you@example.com`. See the user guide and [ADR-0007](docs/adr/0007-optional-email-via-resend.md).
+Set `RESEND_API_KEY`, `RESEND_FROM` and (recommended) `PUBLIC_BASE_URL` to let hosts receive their management link by email and guests receive a confirmation. Without them the feature is off and no email fields appear. Verify with `dishlist admin email test --to you@example.com`. A "Find your events and dishes by email" page (`/find`) lets people recover lost links. See the user guide and [ADR-0007](docs/adr/0007-optional-email-via-resend.md).
 
 ### Docker Compose
 

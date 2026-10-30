@@ -870,3 +870,25 @@ class TestMetricsEndpoint:
         body = client.get("/metrics").text
         assert 'path="/"' in body
         assert 'status="200"' in body
+
+
+class TestHeadRequests:
+    """Uptime monitors commonly probe with HEAD; it must not return 405."""
+
+    def test_head_landing(self, client):
+        resp = client.head("/")
+        assert resp.status_code == 200
+        assert resp.content == b""
+
+    def test_head_health(self, client):
+        resp = client.head("/health")
+        assert resp.status_code == 200
+        assert resp.content == b""
+
+    def test_get_still_works(self, client):
+        assert client.get("/").status_code == 200
+        assert client.get("/health").json()["status"] == "ok"
+
+    def test_other_pages_unchanged(self, client):
+        # HEAD was only opened up on the monitored routes.
+        assert client.head("/create").status_code == 405

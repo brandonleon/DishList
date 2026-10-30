@@ -12,8 +12,10 @@
 - If `DATABASE_URL` starts with `postgresql://` or `postgres://`, DishList uses PostgreSQL. Anything else (unset, `sqlite:///...`) uses the SQLite file as before. The choice is read on each connection, not frozen at import.
 - One set of queries serves both backends. `app/storage.py` keeps SQL written with `?` placeholders and passes it through a small `_Conn` wrapper that, for PostgreSQL, rewrites placeholders, maps `INTEGER PRIMARY KEY AUTOINCREMENT` to `SERIAL`, and fetches new ids with `RETURNING id`. The few dialect differences (timestamp ordering, "add column if missing", the email-retention cutoffs) are handled explicitly; retention now compares ISO date strings computed in Python so it needs no date functions.
 - PostgreSQL connections come from a `psycopg_pool` pool. Connections are checked on checkout (serverless Postgres drops idle ones), prepared statements are disabled (poolers like Neon's PgBouncer endpoint may not support them), and `client_encoding` is forced to UTF-8.
+- Tables live in a dedicated PostgreSQL schema, `dishlist` by default (`DATABASE_SCHEMA` overrides it), selected per transaction with `SET LOCAL search_path` (safe behind transaction poolers). `CREATE TABLE IF NOT EXISTS` silently adopts any same-named table, so using `public` would break, or worse corrupt, on a database that already had an `events` or `dishes` table; the first production deploy hit exactly that (`operator does not exist: boolean = integer`). A dedicated schema means DishList only ever touches what it created.
+- The email-retention purge at startup is best effort: a failure is logged and never prevents the app from starting.
 - Schema setup runs under a PostgreSQL advisory lock so several instances starting at once cannot race.
-- The same test suite runs against either backend. `TEST_DATABASE_URL` selects PostgreSQL and drops the `public` schema per test, so it must be a throwaway database.
+- The same test suite runs against either backend. `TEST_DATABASE_URL` selects PostgreSQL and drops the `dishlist` schema per test, so it must be a throwaway database.
 
 ## Consequences
 

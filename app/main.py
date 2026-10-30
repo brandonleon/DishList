@@ -80,24 +80,36 @@ _last_email_purge = 0.0
 
 
 def _purge_emails(force: bool = False) -> None:
-    """Wipe stored emails for finished events; throttled unless forced."""
+    """Wipe stored emails for finished events; throttled unless forced.
+
+    Best effort: a failure is logged but never stops the app from starting or
+    a page from loading.
+    """
     global _last_email_purge
     now = time.monotonic()
     if not force and _last_email_purge and now - _last_email_purge < _PURGE_INTERVAL_SECONDS:
         return
     _last_email_purge = now
-    purge_expired_emails()
+    try:
+        purge_expired_emails()
+    except Exception:
+        logging.getLogger("uvicorn.error").exception("Email retention purge failed")
 
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
-    init_db()
-    _purge_emails(force=True)
-    # uvicorn's logger so the line shows up in platform logs by default.
+    # uvicorn's logger so the lines show up in platform logs by default.
     startup_log = logging.getLogger("uvicorn.error")
+    # Logged first so it is visible even if database setup fails.
     startup_log.info("Database: %s", describe_backend())
     startup_log.info(mailer.status_summary())
-    app.state.config = load_config()
+    try:
+        init_db()
+        _purge_emails(force=True)
+        app.state.config = load_config()
+    except Exception:
+        close_pool()  # don't leave pool threads hanging a failed startup
+        raise
     try:
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         PID_PATH.write_text(str(os.getpid()))
@@ -279,7 +291,8 @@ def _get_dish_or_404(dish_id: int) -> DishEntry:
 # ── Public routes ──────────────────────────────────────────────────────────────
 
 
-@app.get("/", response_class=HTMLResponse)
+# HEAD is allowed on the routes uptime monitors usually probe; without it they get 405.
+@app.api_route("/", methods=["GET", "HEAD"], response_class=HTMLResponse)
 def landing(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(request, "landing.html")
 
@@ -373,12 +386,62 @@ def create_event_submit(
     )
 
 
+@app.get("/find", response_class=HTMLResponse)
+def find_by_email_form(request: Request) -> HTMLResponse:
+    if not mailer.is_configured():
+        raise HTTPException(status_code=404, detail="Not found")
+    return templates.TemplateResponse(
+        request, "find_email.html", {"done": request.query_params.get("done") == "1"}
+    )
+
+
+@app.post("/find")
+def find_by_email_submit(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    email: str = Form(""),
+):
+    """Email the submitter everything stored under their address.
+
+    Every well-formed request gets the same redirect and message whether or not
+    the address is known, is rate-limited, or sends anything, and the lookup
+    itself runs after the response, so neither the page nor its timing says
+    whether an address is in use.
+    """
+    if not mailer.is_configured():
+        raise HTTPException(status_code=404, detail="Not found")
+    try:
+        address = mailer.clean_email(email)
+    except ValueError:
+        address = None
+    if address is None:
+        return templates.TemplateResponse(
+            request,
+            "find_email.html",
+            {"done": False, "error": "Please enter a valid email address."},
+            status_code=400,
+        )
+    client_ip = request.client.host if request.client else "unknown"
+    if ratelimit.limiter.allow(
+        f"lookup-ip:{client_ip}", ratelimit.LOOKUP_IP_LIMIT
+    ) and ratelimit.limiter.allow(
+        f"lookup-to:{address.lower()}", ratelimit.LOOKUP_ADDRESS_LIMIT
+    ):
+        background_tasks.add_task(
+            notifications.send_lookup_email, address, _base_url(request)
+        )
+    return RedirectResponse(
+        url=str(request.url_for("find_by_email_form")) + "?done=1",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
 @app.get("/favicon.ico", include_in_schema=False)
 def favicon() -> FileResponse:
     return FileResponse(STATIC_DIR / "favicon.ico", media_type="image/x-icon")
 
 
-@app.get("/health", include_in_schema=False)
+@app.api_route("/health", methods=["GET", "HEAD"], include_in_schema=False)
 def health() -> Response:
     try:
         count_events()

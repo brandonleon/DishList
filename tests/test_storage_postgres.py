@@ -160,29 +160,88 @@ class TestPostgres:
         url = os.environ["TEST_DATABASE_URL"]
         storage.close_pool()
         with psycopg.connect(url, autocommit=True) as raw:
-            raw.execute("DROP SCHEMA public CASCADE")
-            raw.execute("CREATE SCHEMA public")
+            raw.execute("DROP SCHEMA IF EXISTS dishlist CASCADE")
+            raw.execute("CREATE SCHEMA dishlist")
             raw.execute(
-                "CREATE TABLE events (id SERIAL PRIMARY KEY, slug TEXT NOT NULL UNIQUE,"
+                "CREATE TABLE dishlist.events (id SERIAL PRIMARY KEY, slug TEXT NOT NULL UNIQUE,"
                 " management_token TEXT NOT NULL UNIQUE, name TEXT NOT NULL, description TEXT,"
                 " event_date TEXT, host_name TEXT NOT NULL DEFAULT 'The House',"
                 " dish_types TEXT NOT NULL DEFAULT '[]', is_active INTEGER NOT NULL DEFAULT 1,"
                 " created_at TEXT NOT NULL)"
             )
             raw.execute(
-                "CREATE TABLE dishes (id SERIAL PRIMARY KEY, event_id INTEGER NOT NULL"
-                " REFERENCES events(id) ON DELETE CASCADE, contributor TEXT NOT NULL,"
+                "CREATE TABLE dishlist.dishes (id SERIAL PRIMARY KEY, event_id INTEGER NOT NULL"
+                " REFERENCES dishlist.events(id) ON DELETE CASCADE, contributor TEXT NOT NULL,"
                 " dish_name TEXT NOT NULL, dish_type TEXT NOT NULL, notes TEXT,"
                 " is_host_item INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL)"
             )
             raw.execute(
-                "INSERT INTO events (slug, management_token, name, dish_types, created_at)"
+                "INSERT INTO dishlist.events (slug, management_token, name, dish_types, created_at)"
                 " VALUES ('s', 't', 'Old', '[\"Main\"]', '2025-01-01T00:00:00+00:00')"
             )
         init_db()
         init_db()
         event = get_event_by_slug("s")
         assert event.host_email is None and event.notify_host is False
+
+    def test_ignores_same_named_tables_in_public(self):
+        """A pre-existing, incompatible public.events must not be adopted or touched."""
+        import psycopg
+
+        url = os.environ["TEST_DATABASE_URL"]
+        with psycopg.connect(url, autocommit=True) as raw:
+            raw.execute("DROP TABLE IF EXISTS public.events CASCADE")
+            raw.execute(
+                "CREATE TABLE public.events (id SERIAL PRIMARY KEY, name TEXT,"
+                " is_active BOOLEAN DEFAULT TRUE)"
+            )
+            raw.execute("INSERT INTO public.events (name) VALUES ('foreign row')")
+        try:
+            event = create_event("Mine", None, None, "H", ["Main"])
+            assert storage.purge_expired_emails() == 0  # the call that crashed startup
+            assert [e.name for e in load_events()] == ["Mine"]
+            assert get_event_by_slug(event.slug) is not None
+            with psycopg.connect(url) as raw:
+                rows = raw.execute("SELECT name FROM public.events").fetchall()
+            assert rows == [("foreign row",)]
+        finally:
+            with psycopg.connect(url, autocommit=True) as raw:
+                raw.execute("DROP TABLE IF EXISTS public.events CASCADE")
+
+    def test_custom_schema_name(self, monkeypatch):
+        import psycopg
+
+        url = os.environ["TEST_DATABASE_URL"]
+        monkeypatch.setenv("DATABASE_SCHEMA", "potluck_test")
+        try:
+            init_db()
+            event = create_event("Custom", None, None, "H", ["Main"])
+            with psycopg.connect(url) as raw:
+                found = raw.execute(
+                    "SELECT count(*) FROM potluck_test.events WHERE slug = %s",
+                    (event.slug,),
+                ).fetchone()
+            assert found == (1,)
+        finally:
+            storage.close_pool()
+            with psycopg.connect(url, autocommit=True) as raw:
+                raw.execute("DROP SCHEMA IF EXISTS potluck_test CASCADE")
+
+
+class TestSchemaName:
+    def test_default(self, monkeypatch):
+        monkeypatch.delenv("DATABASE_SCHEMA", raising=False)
+        assert storage._schema_name() == "dishlist"
+
+    def test_override(self, monkeypatch):
+        monkeypatch.setenv("DATABASE_SCHEMA", "my_app")
+        assert storage._schema_name() == "my_app"
+
+    @pytest.mark.parametrize("bad", ['x"; DROP TABLE events; --', "has space", "1abc", "a-b"])
+    def test_rejects_unsafe_names(self, monkeypatch, bad):
+        monkeypatch.setenv("DATABASE_SCHEMA", bad)
+        with pytest.raises(ValueError):
+            storage._schema_name()
 
 
 class TestDescribeBackend:
@@ -191,10 +250,13 @@ class TestDescribeBackend:
         assert storage.describe_backend().startswith("SQLite (")
 
     def test_postgres_hides_credentials(self, monkeypatch):
+        monkeypatch.delenv("DATABASE_SCHEMA", raising=False)
         monkeypatch.setenv(
             "DATABASE_URL",
             "postgresql://user:s3cret@ep-cool-1234.neon.tech/dish?sslmode=require",
         )
         text = storage.describe_backend()
-        assert text == "PostgreSQL (host=ep-cool-1234.neon.tech, database=dish)"
+        assert text == (
+            "PostgreSQL (host=ep-cool-1234.neon.tech, database=dish, schema=dishlist)"
+        )
         assert "s3cret" not in text and "user" not in text

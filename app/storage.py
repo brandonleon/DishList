@@ -261,6 +261,23 @@ def _postgres_url() -> Optional[str]:
     return url if url.startswith(("postgres://", "postgresql://")) else None
 
 
+DEFAULT_SCHEMA = "dishlist"
+_SCHEMA_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,62}$")
+
+
+def _schema_name() -> str:
+    """PostgreSQL schema that holds DishList's tables (DATABASE_SCHEMA, default ``dishlist``).
+
+    A dedicated schema keeps DishList from adopting, or colliding with, tables
+    of the same name that already exist in ``public`` (shared or reused
+    databases), since ``CREATE TABLE IF NOT EXISTS`` would silently reuse them.
+    """
+    name = os.environ.get("DATABASE_SCHEMA", "").strip() or DEFAULT_SCHEMA
+    if not _SCHEMA_RE.match(name):
+        raise ValueError(f"Invalid DATABASE_SCHEMA: {name!r}")
+    return name
+
+
 _pool: Any = None
 _pool_url: Optional[str] = None
 _pool_lock = threading.Lock()
@@ -306,7 +323,10 @@ def describe_backend() -> str:
 
     parsed = urlparse(url)
     database = parsed.path.lstrip("/") or "(default)"
-    return f"PostgreSQL (host={parsed.hostname}, database={database})"
+    return (
+        f"PostgreSQL (host={parsed.hostname}, database={database}, "
+        f"schema={_schema_name()})"
+    )
 
 
 def close_pool() -> None:
@@ -371,6 +391,9 @@ def _get_connection() -> Generator[_Conn, None, None]:
     if url:
         # The pool commits on success and rolls back if the block raises.
         with _get_pool(url).connection() as raw:
+            # SET LOCAL lasts for this transaction only, which is the one form
+            # of search_path change that is safe behind a transaction pooler.
+            raw.execute(f'SET LOCAL search_path TO "{_schema_name()}"')
             yield _Conn(raw, postgres=True)
         return
     DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -415,6 +438,7 @@ def init_db() -> None:
         if conn.postgres:
             # Several app instances may start at once; serialize schema setup.
             conn.execute("SELECT pg_advisory_xact_lock(727420)")
+            conn.execute(f'CREATE SCHEMA IF NOT EXISTS "{_schema_name()}"')
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS events (
@@ -714,6 +738,17 @@ def update_event(
         )
 
 
+def find_events_by_host_email(email: str) -> List[Event]:
+    """Events whose Host gave this address (case-insensitive), newest first."""
+    with _get_connection() as conn:
+        rows = conn.execute(
+            "SELECT * FROM events WHERE host_email IS NOT NULL"
+            " AND LOWER(host_email) = LOWER(?) ORDER BY id DESC",
+            (email.strip(),),
+        ).fetchall()
+    return [_row_to_event(row) for row in rows]
+
+
 # How long after the event date, or after creation for undated events, stored
 # email addresses are kept before being wiped.
 EMAIL_GRACE_DAYS = 1
@@ -875,6 +910,35 @@ def get_dish(dish_id: int) -> Optional[DishEntry]:
         ).fetchone()
         tag_map = _load_tags_for_dishes(conn, [dish_id]) if row else {}
     return _row_to_entry(row, tag_map.get(dish_id)) if row else None
+
+
+def find_submissions_by_contributor_email(
+    email: str,
+) -> List[Tuple[DishEntry, Event]]:
+    """Guest Submissions made with this address (case-insensitive), newest first,
+    each paired with its Event."""
+    with _get_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, event_id, contributor, dish_name, dish_type,
+                   notes, is_host_item, created_at, contributor_email
+            FROM dishes
+            WHERE is_host_item = 0 AND contributor_email IS NOT NULL
+              AND LOWER(contributor_email) = LOWER(?)
+            ORDER BY id DESC
+            """,
+            (email.strip(),),
+        ).fetchall()
+    events: Dict[int, Optional[Event]] = {}
+    found: List[Tuple[DishEntry, Event]] = []
+    for row in rows:
+        event_id = row["event_id"]
+        if event_id not in events:
+            events[event_id] = get_event_by_id(event_id)
+        event = events[event_id]
+        if event is not None:
+            found.append((_row_to_entry(row), event))
+    return found
 
 
 def add_dish(entry: DishEntry) -> int:
