@@ -17,6 +17,8 @@ IP_LIMIT = 10  # emails triggered per client IP per window
 ADDRESS_LIMIT = 5  # emails sent to one recipient address per window
 EVENT_NOTICE_LIMIT = 20  # host "new dish" notices per event per window
 LINK_RESEND_LIMIT = 3  # management-link resends per event per window
+LOOKUP_IP_LIMIT = 10  # "find my events" requests per client IP per window
+LOOKUP_ADDRESS_LIMIT = 2  # lookup emails sent to one address per window
 
 _SWEEP_THRESHOLD = 5000
 

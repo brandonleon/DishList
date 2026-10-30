@@ -228,6 +228,7 @@
 </ul>
 </li>
 <li><a href="#creating-an-event">Creating an event</a></li>
+<li><a href="#lost-a-link-find-your-events-and-dishes-by-email">Lost a link? Find your events and dishes by email</a></li>
 <li><a href="#sharing-with-guests">Sharing with guests</a></li>
 <li><a href="#guest-dish-submission">Guest dish submission</a><ul>
 <li><a href="#dietary-tags">Dietary Tags</a></li>
@@ -322,6 +323,13 @@ same <code>dishlist.db</code> and <code>config.json</code> the server is using.<
 <li>Click <strong>Create Event</strong>.</li>
 </ol>
 <p>After creation you land on your <strong>management dashboard</strong>. Bookmark that URL — it's the only way back to your host controls. If you gave an email, the link is also in your inbox, and you can send it to yourself again with <strong>Email me this management link</strong>.</p>
+<hr />
+<h2 id="lost-a-link-find-your-events-and-dishes-by-email">Lost a link? Find your events and dishes by email</h2>
+<p>If the server has email set up and you gave an email address when you created an event or added a dish, you can get your links again. Open <strong>Find your events and dishes by email</strong> on the home page (or go to <code>/find</code>), enter the address and submit.</p>
+<p>If anything is stored under that address you'll receive one email:
+- for <strong>events you host</strong>: the public guest link and your private management link;
+- for <strong>dishes you added</strong>: the link to each event's public page (no management link; ask the host for any change).</p>
+<p>The page always shows the same message — <em>"If an event or dish is associated with this email, you will receive an email with details."</em> — whether or not the address is known, so it can't be used to check who has signed up, and mistyped addresses are never emailed. Addresses are deleted once an event is over, so only live events can be found. Lookups are rate-limited.</p>
 <hr />
 <h2 id="sharing-with-guests">Sharing with guests</h2>
 <p>From the management dashboard, copy the <strong>Guest link</strong> and share it however you like — group chat, email, calendar invite. Guests don't need an account.</p>

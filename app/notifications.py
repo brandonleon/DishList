@@ -12,8 +12,11 @@ from typing import List
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
+from typing import Tuple
+
 from . import mailer
 from .models import DishEntry, Event
+from .storage import find_events_by_host_email, find_submissions_by_contributor_email
 
 _env = Environment(
     loader=FileSystemLoader(str(Path(__file__).resolve().parent / "templates" / "email")),
@@ -89,3 +92,26 @@ def send_host_dish_notice(event: Event, dish: DishEntry, base_url: str) -> bool:
         text,
         html,
     )
+
+
+def send_lookup_email(address: str, base_url: str) -> bool:
+    """Email everything stored under ``address``, or do nothing if there is nothing.
+
+    Sending nothing for an unknown address is deliberate: it avoids mailing
+    people who mistyped, and, together with an identical web response, stops
+    the form from revealing which addresses are in use. Hosts get the public
+    and management links; Guests get the public link of each Event they
+    submitted to (never a management link).
+    """
+
+    events = find_events_by_host_email(address)
+    submissions = find_submissions_by_contributor_email(address)
+    if not events and not submissions:
+        return False
+    hosted = [{"event": event, **_links(event, base_url)} for event in events]
+    dishes = [
+        {"dish": dish, "event": event, "board_url": _links(event, base_url)["board_url"]}
+        for dish, event in submissions
+    ]
+    text, html = _render("email_lookup", hosted=hosted, dishes=dishes)
+    return mailer.send_email(address, "Your DishList events and dishes", text, html)

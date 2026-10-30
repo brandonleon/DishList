@@ -738,6 +738,17 @@ def update_event(
         )
 
 
+def find_events_by_host_email(email: str) -> List[Event]:
+    """Events whose Host gave this address (case-insensitive), newest first."""
+    with _get_connection() as conn:
+        rows = conn.execute(
+            "SELECT * FROM events WHERE host_email IS NOT NULL"
+            " AND LOWER(host_email) = LOWER(?) ORDER BY id DESC",
+            (email.strip(),),
+        ).fetchall()
+    return [_row_to_event(row) for row in rows]
+
+
 # How long after the event date, or after creation for undated events, stored
 # email addresses are kept before being wiped.
 EMAIL_GRACE_DAYS = 1
@@ -899,6 +910,35 @@ def get_dish(dish_id: int) -> Optional[DishEntry]:
         ).fetchone()
         tag_map = _load_tags_for_dishes(conn, [dish_id]) if row else {}
     return _row_to_entry(row, tag_map.get(dish_id)) if row else None
+
+
+def find_submissions_by_contributor_email(
+    email: str,
+) -> List[Tuple[DishEntry, Event]]:
+    """Guest Submissions made with this address (case-insensitive), newest first,
+    each paired with its Event."""
+    with _get_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, event_id, contributor, dish_name, dish_type,
+                   notes, is_host_item, created_at, contributor_email
+            FROM dishes
+            WHERE is_host_item = 0 AND contributor_email IS NOT NULL
+              AND LOWER(contributor_email) = LOWER(?)
+            ORDER BY id DESC
+            """,
+            (email.strip(),),
+        ).fetchall()
+    events: Dict[int, Optional[Event]] = {}
+    found: List[Tuple[DishEntry, Event]] = []
+    for row in rows:
+        event_id = row["event_id"]
+        if event_id not in events:
+            events[event_id] = get_event_by_id(event_id)
+        event = events[event_id]
+        if event is not None:
+            found.append((_row_to_entry(row), event))
+    return found
 
 
 def add_dish(entry: DishEntry) -> int:

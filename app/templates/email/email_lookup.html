@@ -1,0 +1,25 @@
+{% extends "_layout.html" %}
+{% block body %}
+<h1 style="font-size:20px;margin:0 0 12px;">Your DishList events and dishes</h1>
+<p style="margin:0 0 16px;">You asked DishList to look up what is associated with this email address.</p>
+{% if hosted %}
+<h2 style="font-size:16px;margin:20px 0 8px;">Events you host</h2>
+{% for item in hosted %}
+<div style="margin:0 0 16px;padding:12px;border:1px solid #e5e1d8;border-radius:8px;">
+  <p style="margin:0 0 6px;"><strong>{{ item.event.name }}</strong>{% if item.event.event_date %} &middot; {{ item.event.event_date.strftime("%A, %B %d, %Y") }}{% endif %}</p>
+  <p style="margin:0 0 4px;"><a href="{{ item.board_url }}">Guest link</a> (share this)</p>
+  <p style="margin:0;"><a href="{{ item.manage_url }}">Management link</a> (private, don't forward)</p>
+</div>
+{% endfor %}
+{% endif %}
+{% if dishes %}
+<h2 style="font-size:16px;margin:20px 0 8px;">Dishes you're bringing</h2>
+{% for item in dishes %}
+<div style="margin:0 0 12px;padding:12px;border:1px solid #e5e1d8;border-radius:8px;">
+  <p style="margin:0 0 4px;"><strong>{{ item.dish.dish_name }}</strong> ({{ item.dish.dish_type }})</p>
+  <p style="margin:0;">at <a href="{{ item.board_url }}">{{ item.event.name }}</a>{% if item.event.event_date %} &middot; {{ item.event.event_date.strftime("%B %d, %Y") }}{% endif %}</p>
+</div>
+{% endfor %}
+<p style="margin:12px 0 0;font-size:14px;color:#555;">To change or remove a dish, reach out to the event host.</p>
+{% endif %}
+{% endblock %}
