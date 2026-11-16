@@ -19,6 +19,7 @@ from fastapi import BackgroundTasks, FastAPI, Form, HTTPException, Request, stat
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from markupsafe import Markup
 
 from . import mailer, notifications, ratelimit
 from .config import AppConfig, DATA_DIR, load_config, save_config
@@ -87,7 +88,11 @@ def _purge_emails(force: bool = False) -> None:
     """
     global _last_email_purge
     now = time.monotonic()
-    if not force and _last_email_purge and now - _last_email_purge < _PURGE_INTERVAL_SECONDS:
+    if (
+        not force
+        and _last_email_purge
+        and now - _last_email_purge < _PURGE_INTERVAL_SECONDS
+    ):
         return
     _last_email_purge = now
     try:
@@ -154,7 +159,12 @@ def _format_dish_timestamp(value: datetime | str) -> str:
         parsed = value
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone().strftime("%b %d, %Y %I:%M %p")
+    parsed = parsed.astimezone(timezone.utc)
+    # Server-rendered UTC fallback; local-time.js rewrites it in the viewer's
+    # own timezone (the server's TZ is meaningless to guests).
+    iso = parsed.isoformat().replace("+00:00", "Z")
+    fallback = parsed.strftime("%b %d, %Y %I:%M %p UTC")
+    return Markup(f'<time class="local-time" datetime="{iso}">{fallback}</time>')
 
 
 def _load_app_version() -> str:

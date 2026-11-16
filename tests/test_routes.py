@@ -231,6 +231,17 @@ class TestHelperFunctions:
 
         assert "Jun" in _format_dish_timestamp(datetime(2024, 6, 1, 12, 0, 0))
 
+    def test_format_dish_timestamp_emits_utc_time_element(self):
+        from datetime import timedelta, timezone
+
+        from app.main import _format_dish_timestamp
+
+        # 9:59 PM Pacific == 05:59 UTC the next day
+        pst = timezone(timedelta(hours=-8))
+        out = str(_format_dish_timestamp(datetime(2026, 11, 15, 21, 59, tzinfo=pst)))
+        assert 'datetime="2026-11-16T05:59:00Z"' in out
+        assert 'class="local-time"' in out
+
     def test_filter_dishes_empty_query_returns_all(self):
         from app.main import _filter_dishes
         from app.models import DishEntry
