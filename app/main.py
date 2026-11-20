@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import difflib
 import ipaddress
 import json
 import logging
+import math
 import os
 import signal
 import time
@@ -29,7 +31,7 @@ from .metrics import (
     PrometheusMiddleware,
     render_metrics,
 )
-from .models import DishEntry, Event
+from .models import DishEntry, Event, Tag
 from .storage import (
     add_dish,
     create_event,
@@ -244,6 +246,256 @@ def _filter_dishes(dishes: List[DishEntry], query: str) -> List[DishEntry]:
         if any(search in chunk.lower() for chunk in searchable if chunk):
             filtered.append(dish)
     return filtered
+
+
+# ── Duplicate-dish hint ────────────────────────────────────────────────────────
+
+SIMILAR_MIN_QUERY = 3
+SIMILAR_LIMIT = 3
+_SIMILAR_STOPWORDS = frozenset({"a", "an", "and", "n", "the", "with", "w", "of"})
+_SIMILAR_TOKEN_RATIO = 0.85
+_SIMILAR_STRING_RATIO = 0.85
+
+
+def _dish_name_tokens(name: str) -> List[str]:
+    """Casefold, drop punctuation and filler words, and strip a plural "s"."""
+    cleaned = "".join(ch if ch.isalnum() else " " for ch in name.casefold())
+    tokens: List[str] = []
+    for word in cleaned.split():
+        if word in _SIMILAR_STOPWORDS:
+            continue
+        if len(word) > 3 and word.endswith("s") and not word.endswith("ss"):
+            word = word[:-1]
+        tokens.append(word)
+    return tokens
+
+
+def _dish_name_similarity(a: str, b: str) -> float:
+    """Score 0..1 for how likely two dish names describe the same dish.
+
+    A pair matches when every word of the shorter name has a (fuzzy) partner in
+    the longer one and at least half of the longer name is covered, or when the
+    normalized names are near-identical strings. Returns 0.0 for no match.
+    """
+    tokens_a, tokens_b = _dish_name_tokens(a), _dish_name_tokens(b)
+    if not tokens_a or not tokens_b:
+        return 0.0
+    short, long_ = sorted((tokens_a, tokens_b), key=len)
+    covered = sum(
+        1
+        for tok in short
+        if any(
+            tok == other
+            or difflib.SequenceMatcher(None, tok, other).ratio() >= _SIMILAR_TOKEN_RATIO
+            for other in long_
+        )
+    )
+    string_ratio = difflib.SequenceMatcher(
+        None, " ".join(tokens_a), " ".join(tokens_b)
+    ).ratio()
+    token_match = covered == len(short) and covered / len(long_) >= 0.5
+    if not token_match and string_ratio < _SIMILAR_STRING_RATIO:
+        return 0.0
+    return (covered / len(long_) + string_ratio) / 2
+
+
+def _similar_dishes(
+    dishes: List[DishEntry], query: str, limit: int = SIMILAR_LIMIT
+) -> List[DishEntry]:
+    """Dishes whose names look like `query`, best match first (at most `limit`)."""
+    if len(query.strip()) < SIMILAR_MIN_QUERY:
+        return []
+    scored = [(_dish_name_similarity(query, d.dish_name), d) for d in dishes]
+    matches = [(score, d) for score, d in scored if score > 0]
+    matches.sort(key=lambda pair: pair[0], reverse=True)
+    return [d for _, d in matches[:limit]]
+
+
+SORT_OPTIONS = {
+    "type": "Dish type",
+    "name": "Dish name (A–Z)",
+    "contributor": "Contributor (A–Z)",
+    "newest": "Newest first",
+    "oldest": "Oldest first",
+}
+DEFAULT_SORT = "type"
+
+# Nord-derived palette for the dish-type pie; cycles if an event has more types.
+PIE_COLORS = [
+    "#5E81AC",
+    "#A3BE8C",
+    "#D08770",
+    "#B48EAD",
+    "#EBCB8B",
+    "#88C0D0",
+    "#BF616A",
+    "#8FBCBB",
+]
+
+
+def _normalize_sort(value: Optional[str]) -> str:
+    return value if value in SORT_OPTIONS else DEFAULT_SORT
+
+
+def _created_key(dish: DishEntry) -> datetime:
+    value = dish.created_at
+    if isinstance(value, str):
+        value = datetime.fromisoformat(value)
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value
+
+
+def _sort_dishes(
+    dishes: List[DishEntry], sort: str, dish_types: List[str]
+) -> List[DishEntry]:
+    """Order guest dishes for display. Python's sort is stable, so ties keep
+    the storage order (oldest first)."""
+    if sort == "name":
+        return sorted(dishes, key=lambda d: d.dish_name.casefold())
+    if sort == "contributor":
+        return sorted(
+            dishes, key=lambda d: (d.contributor.casefold(), d.dish_name.casefold())
+        )
+    if sort == "newest":
+        return sorted(dishes, key=lambda d: (_created_key(d), d.id or 0), reverse=True)
+    if sort == "oldest":
+        return sorted(dishes, key=lambda d: (_created_key(d), d.id or 0))
+    # "type": follow the host's own Dish Type order; unknown types go last.
+    rank = {name: i for i, name in enumerate(dish_types)}
+    return sorted(
+        dishes,
+        key=lambda d: (
+            rank.get(d.dish_type, len(rank)),
+            d.dish_type.casefold(),
+            d.dish_name.casefold(),
+        ),
+    )
+
+
+# Guest Board tag filters. Allergen warnings can only be *excluded* ("hide
+# dishes containing X") and dietary preferences only *required* ("show only
+# Vegan"): per ADR-0001 the board never implies a dish is free of anything.
+TAG_FILTER_CATEGORIES = {
+    "hide": "Allergen warnings",
+    "only": "Dietary preferences",
+}
+
+
+def _tag_filter_options(dishes: List[DishEntry]) -> dict[str, List[Tag]]:
+    """Filterable Tags actually used on these dishes, keyed by filter kind."""
+    used: dict[int, Tag] = {}
+    for dish in dishes:
+        for tag in dish.tags:
+            used.setdefault(tag.id, tag)
+    return {
+        kind: sorted(
+            (t for t in used.values() if t.category == category),
+            key=lambda t: (t.position, t.name.casefold()),
+        )
+        for kind, category in TAG_FILTER_CATEGORIES.items()
+    }
+
+
+def _parse_tag_filter(
+    params, options: dict[str, List[Tag]]
+) -> tuple[set[int], set[int]]:
+    """Read ?hide=<tag id>&only=<tag id> values, dropping junk and any id that
+    is not an offered Tag of the right category."""
+
+    def ids(kind: str) -> set[int]:
+        allowed = {t.id for t in options[kind]}
+        picked: set[int] = set()
+        for raw in params.getlist(kind):
+            try:
+                tag_id = int(raw)
+            except (TypeError, ValueError):
+                continue
+            if tag_id in allowed:
+                picked.add(tag_id)
+        return picked
+
+    return ids("hide"), ids("only")
+
+
+def _apply_tag_filter(
+    dishes: List[DishEntry], hide: set[int], only: set[int]
+) -> List[DishEntry]:
+    """Drop dishes carrying any hidden allergen Tag; keep only dishes carrying
+    every required dietary Tag."""
+    if not hide and not only:
+        return dishes
+    kept: List[DishEntry] = []
+    for dish in dishes:
+        tag_ids = {t.id for t in dish.tags}
+        if tag_ids & hide or not only <= tag_ids:
+            continue
+        kept.append(dish)
+    return kept
+
+
+def _guest_board_dishes(all_dishes: List[DishEntry], event: Event, params) -> dict:
+    """Search, tag-filter and sort Guest Submissions from request params.
+    Host Contributions are never filtered (see CONTEXT.md, Guest Board)."""
+    search = (params.get("search") or "").strip()
+    sort = _normalize_sort(params.get("sort"))
+    options = _tag_filter_options(all_dishes)
+    hide, only = _parse_tag_filter(params, options)
+    guests = [d for d in all_dishes if not d.is_host_item]
+    guests = _filter_dishes(guests, search) if search else guests
+    guests = _sort_dishes(_apply_tag_filter(guests, hide, only), sort, event.dish_types)
+    return {
+        "dishes": guests,
+        "search": search,
+        "sort": sort,
+        "tag_options": options,
+        "hide_ids": hide,
+        "only_ids": only,
+        "filters_active": bool(hide or only),
+    }
+
+
+def _dish_type_breakdown(dishes: List[DishEntry], dish_types: List[str]) -> List[dict]:
+    """Count dishes per Dish Type and precompute SVG pie-slice paths
+    (viewBox -1 -1 2 2, radius 1, starting at 12 o'clock)."""
+    counts: dict[str, int] = {}
+    for dish in dishes:
+        counts[dish.dish_type] = counts.get(dish.dish_type, 0) + 1
+    if not counts:
+        return []
+    order = [t for t in dish_types if t in counts] + sorted(
+        (t for t in counts if t not in dish_types), key=str.casefold
+    )
+    total = sum(counts.values())
+    color_for = {t: PIE_COLORS[i % len(PIE_COLORS)] for i, t in enumerate(dish_types)}
+    slices: List[dict] = []
+    start = 0.0
+    extra = len(dish_types)
+    for name in order:
+        count = counts[name]
+        frac = count / total
+        end = start + frac
+        if name not in color_for:
+            color_for[name] = PIE_COLORS[extra % len(PIE_COLORS)]
+            extra += 1
+        if frac >= 1:
+            path = None  # full circle; template draws a <circle>
+        else:
+            x0, y0 = math.sin(2 * math.pi * start), -math.cos(2 * math.pi * start)
+            x1, y1 = math.sin(2 * math.pi * end), -math.cos(2 * math.pi * end)
+            large = 1 if frac > 0.5 else 0
+            path = f"M0 0 L{x0:.4f} {y0:.4f} A1 1 0 {large} 1 {x1:.4f} {y1:.4f} Z"
+        slices.append(
+            {
+                "name": name,
+                "count": count,
+                "percent": round(frac * 100),
+                "color": color_for[name],
+                "path": path,
+            }
+        )
+        start = end
+    return slices
 
 
 def _check_admin_access(request: Request, config: AppConfig) -> None:
@@ -489,14 +741,11 @@ def event_home(request: Request, slug: str) -> HTMLResponse:
     view_mode = request.query_params.get("view", "cards")
     if view_mode not in {"cards", "table"}:
         view_mode = "cards"
-    search_query = request.query_params.get("search", "").strip()
 
     all_dishes = load_dishes_for_event(event.id)
     host_dishes = [d for d in all_dishes if d.is_host_item]
     guest_dishes = [d for d in all_dishes if not d.is_host_item]
-    filtered_guests = (
-        _filter_dishes(guest_dishes, search_query) if search_query else guest_dishes
-    )
+    board = _guest_board_dishes(all_dishes, event, request.query_params)
 
     return templates.TemplateResponse(
         request,
@@ -505,10 +754,17 @@ def event_home(request: Request, slug: str) -> HTMLResponse:
             "event": event,
             "host_dishes": host_dishes,
             "guest_dishes": guest_dishes,
-            "table_dishes": filtered_guests,
-            "card_dishes": filtered_guests,
+            "table_dishes": board["dishes"],
+            "card_dishes": board["dishes"],
             "view_mode": view_mode,
-            "search_query": search_query,
+            "search_query": board["search"],
+            "sort": board["sort"],
+            "sort_options": SORT_OPTIONS,
+            "tag_options": board["tag_options"],
+            "hide_ids": board["hide_ids"],
+            "only_ids": board["only_ids"],
+            "filters_active": board["filters_active"],
+            "type_breakdown": _dish_type_breakdown(all_dishes, event.dish_types),
         },
     )
 
@@ -595,29 +851,55 @@ def event_add_submission(
     )
 
 
-@app.get("/e/{slug}/table/rows", response_class=HTMLResponse)
-def event_table_rows_partial(
-    request: Request, slug: str, search: str = ""
+@app.get("/e/{slug}/add/similar", response_class=HTMLResponse)
+def event_add_similar_partial(
+    request: Request, slug: str, dish_name: str = ""
 ) -> HTMLResponse:
+    """htmx partial: non-blocking "someone's already bringing this" hint."""
+    event = _get_event_by_slug_or_404(slug)
+    query = dish_name[:120]
+    if len(query.strip()) < SIMILAR_MIN_QUERY:
+        return HTMLResponse("")
+    matches = _similar_dishes(load_dishes_for_event(event.id), query)
+    if not matches:
+        return HTMLResponse("")
+    # Only public fields leave the server — never contributor_email or notes.
+    hints = [
+        {
+            "who": f"{event.host_name} (host)" if d.is_host_item else d.contributor,
+            "dish_name": d.dish_name,
+            "dish_type": d.dish_type,
+        }
+        for d in matches
+    ]
+    return templates.TemplateResponse(
+        request, "partials/similar_dishes.html", {"hints": hints}
+    )
+
+
+@app.get("/e/{slug}/table/rows", response_class=HTMLResponse)
+def event_table_rows_partial(request: Request, slug: str) -> HTMLResponse:
+    """Accepts search, sort and repeated hide/only tag ids as query params."""
     event = _get_event_by_slug_or_404(slug)
     all_dishes = load_dishes_for_event(event.id)
-    guest_dishes = [d for d in all_dishes if not d.is_host_item]
-    filtered = _filter_dishes(guest_dishes, search)
+    board = _guest_board_dishes(all_dishes, event, request.query_params)
     return templates.TemplateResponse(
-        request, "partials/table_rows.html", {"table_dishes": filtered}
+        request,
+        "partials/table_rows.html",
+        {"table_dishes": board["dishes"], "filters_active": board["filters_active"]},
     )
 
 
 @app.get("/e/{slug}/cards/grid", response_class=HTMLResponse)
-def event_card_grid_partial(
-    request: Request, slug: str, search: str = ""
-) -> HTMLResponse:
+def event_card_grid_partial(request: Request, slug: str) -> HTMLResponse:
+    """Accepts search, sort and repeated hide/only tag ids as query params."""
     event = _get_event_by_slug_or_404(slug)
     all_dishes = load_dishes_for_event(event.id)
-    guest_dishes = [d for d in all_dishes if not d.is_host_item]
-    filtered = _filter_dishes(guest_dishes, search)
+    board = _guest_board_dishes(all_dishes, event, request.query_params)
     return templates.TemplateResponse(
-        request, "partials/card_grid.html", {"card_dishes": filtered}
+        request,
+        "partials/card_grid.html",
+        {"card_dishes": board["dishes"], "filters_active": board["filters_active"]},
     )
 
 

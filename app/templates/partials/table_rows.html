@@ -20,7 +20,7 @@
 {% else %}
   <tr>
     <td colspan="5" class="text-center py-4 text-muted">
-      No dishes match this search just yet.
+      {% if filters_active is defined and filters_active %}No dishes match these filters yet.{% else %}No dishes match this search just yet.{% endif %}
     </td>
   </tr>
 {% endif %}

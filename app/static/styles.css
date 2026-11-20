@@ -298,3 +298,196 @@ footer {
   );
   border-radius: 0.5rem;
 }
+
+/* ── Dish type breakdown (event page pie) ─────────────────────── */
+.type-pie path,
+.type-pie circle {
+  stroke: #fff;
+  stroke-width: 0.02;
+  stroke-linejoin: round;
+}
+
+.type-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1.5rem;
+}
+
+.type-legend li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.925rem;
+}
+
+.type-swatch {
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.type-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.type-count {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+@media (max-width: 575.98px) {
+  .type-legend {
+    flex-direction: column;
+  }
+
+  .type-name {
+    flex-grow: 1;
+  }
+}
+
+/* ── Duplicate hint ── */
+
+.dup-hint-region:empty {
+  display: none;
+}
+
+.dup-hint {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+  margin-top: 0.5rem;
+  padding: 0.6rem 0.8rem;
+  border-left: 4px solid var(--nord-yellow);
+  border-radius: 0.5rem;
+  background: rgba(235, 203, 139, 0.18);
+  color: var(--nord-text);
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.dup-hint ul {
+  margin-top: 0.25rem;
+}
+
+.dup-hint-icon {
+  flex-shrink: 0;
+}
+
+.dup-hint-note {
+  display: block;
+  margin-top: 0.25rem;
+  color: var(--nord-subtext);
+  font-size: 0.8rem;
+}
+
+/* ── Tag filter ── */
+.tag-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.tag-filter-group {
+  min-width: 0;
+}
+
+.tag-filter-legend {
+  font-size: 0.925rem;
+  font-weight: 600;
+  margin-bottom: 0.4rem;
+}
+
+.tag-filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.tag-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 2.5rem;
+  padding: 0.35rem 0.85rem;
+  border: 1px solid var(--nord-surface1);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--nord-text);
+  font-size: 0.9rem;
+  line-height: 1.2;
+  cursor: pointer;
+  user-select: none;
+}
+
+.tag-filter-chip:hover {
+  border-color: var(--nord-surface2);
+}
+
+/* State is shown by an icon and a fill, never by color alone. */
+.tag-filter-chip::before {
+  content: "+";
+  font-weight: 700;
+  width: 0.8em;
+  text-align: center;
+}
+
+.btn-check:checked + .tag-filter-chip {
+  font-weight: 600;
+}
+
+.btn-check:checked + .tag-filter-chip-hide {
+  background: #FBF1DC;
+  border-color: #B58A2A;
+  color: #6B5310;
+  text-decoration: line-through;
+  text-decoration-thickness: 1.5px;
+}
+
+.btn-check:checked + .tag-filter-chip-hide::before {
+  content: "✕";
+}
+
+.btn-check:checked + .tag-filter-chip-only {
+  background: #E3EFEE;
+  border-color: #4A7D7C;
+  color: #3A6463;
+}
+
+.btn-check:checked + .tag-filter-chip-only::before {
+  content: "✓";
+}
+
+.btn-check:focus-visible + .tag-filter-chip {
+  outline: 3px solid rgba(var(--bs-primary-rgb), 0.55);
+  outline-offset: 2px;
+}
+
+.tag-filter-actions:not(:has(button:not([hidden]))) {
+  display: none;
+}
+
+.host-filter-flag {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+  padding: 0.4rem 0.6rem;
+  border-left: 3px solid #B58A2A;
+  border-radius: 0.375rem;
+  background: #FBF1DC;
+  color: #6B5310;
+}
+
+.host-filter-flag[hidden] {
+  display: none;
+}
+
+.host-filter-flag svg {
+  margin-top: 0.15rem;
+}
+
+.card.host-card-flagged {
+  border-color: #B58A2A !important;
+}

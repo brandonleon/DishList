@@ -903,3 +903,96 @@ class TestHeadRequests:
     def test_other_pages_unchanged(self, client):
         # HEAD was only opened up on the monitored routes.
         assert client.head("/create").status_code == 405
+
+
+# ── Sorting & dish-type breakdown ──────────────────────────────────────────────
+
+
+def _event_with_dishes(client):
+    from app.storage import get_event_by_management_token
+
+    token = _create_event(client)
+    event = get_event_by_management_token(token)
+    assert event is not None
+    for contributor, name, dish_type in [
+        ("Zoe", "Brownies", "Dessert"),
+        ("Adam", "Lasagna", "Main"),
+        ("Mia", "Coleslaw", "Side"),
+        ("Bob", "Apple Pie", "Dessert"),
+    ]:
+        resp = client.post(
+            f"/e/{event.slug}/add",
+            data={
+                "contributor": contributor,
+                "dish_name": name,
+                "dish_type": dish_type,
+            },
+            follow_redirects=False,
+        )
+        assert resp.status_code == 303
+    return event
+
+
+def _order(html, names):
+    return sorted(names, key=html.index)
+
+
+class TestSortingAndBreakdown:
+    NAMES = ["Brownies", "Lasagna", "Coleslaw", "Apple Pie"]
+
+    def test_default_sort_follows_dish_type_order(self, client):
+        event = _event_with_dishes(client)
+        html = client.get(f"/e/{event.slug}/table/rows").text
+        assert _order(html, self.NAMES) == [
+            "Lasagna",
+            "Coleslaw",
+            "Apple Pie",
+            "Brownies",
+        ]
+
+    @pytest.mark.parametrize(
+        "sort,expected",
+        [
+            ("name", ["Apple Pie", "Brownies", "Coleslaw", "Lasagna"]),
+            ("contributor", ["Lasagna", "Apple Pie", "Coleslaw", "Brownies"]),
+            ("newest", ["Apple Pie", "Coleslaw", "Lasagna", "Brownies"]),
+            ("oldest", ["Brownies", "Lasagna", "Coleslaw", "Apple Pie"]),
+        ],
+    )
+    def test_sort_options(self, client, sort, expected):
+        event = _event_with_dishes(client)
+        for path in ("table/rows", "cards/grid"):
+            html = client.get(f"/e/{event.slug}/{path}?sort={sort}").text
+            assert _order(html, self.NAMES) == expected
+
+    def test_bogus_sort_falls_back_to_type(self, client):
+        event = _event_with_dishes(client)
+        html = client.get(f"/e/{event.slug}?view=table&sort=bogus").text
+        assert _order(html, self.NAMES) == [
+            "Lasagna",
+            "Coleslaw",
+            "Apple Pie",
+            "Brownies",
+        ]
+
+    def test_breakdown_pie_rendered(self, client):
+        event = _event_with_dishes(client)
+        html = client.get(f"/e/{event.slug}").text
+        assert "What&#39;s on the table" in html or "What's on the table" in html
+        assert 'class="type-pie' in html
+        assert "Dessert 2" in html  # aria-label summary
+
+    def test_breakdown_hidden_when_no_dishes(self, client):
+        from app.storage import get_event_by_management_token
+
+        event = get_event_by_management_token(_create_event(client))
+        assert 'class="type-pie' not in client.get(f"/e/{event.slug}").text
+
+
+def test_breakdown_single_type_is_full_circle():
+    from app.main import _dish_type_breakdown
+    from app.models import DishEntry
+
+    dishes = [DishEntry(contributor="a", dish_name="x", dish_type="Main")] * 2
+    (only,) = _dish_type_breakdown(dishes, ["Main", "Side"])
+    assert only["path"] is None and only["count"] == 2 and only["percent"] == 100

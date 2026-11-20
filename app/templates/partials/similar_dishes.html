@@ -1,0 +1,21 @@
+{% if hints %}
+<div class="dup-hint" data-dup-hint>
+  <span class="dup-hint-icon" aria-hidden="true">👀</span>
+  <div>
+    {% if hints | length == 1 %}
+      {% set h = hints[0] %}
+      <span class="fw-semibold">Heads up:</span>
+      {{ h.who }} is already bringing <span class="fw-semibold">{{ h.dish_name }}</span>
+      <span class="text-muted">({{ h.dish_type }})</span>.
+    {% else %}
+      <span class="fw-semibold">Heads up — similar dishes are already on the list:</span>
+      <ul class="mb-0 ps-3">
+        {% for h in hints %}
+          <li>{{ h.who }} is bringing <span class="fw-semibold">{{ h.dish_name }}</span> <span class="text-muted">({{ h.dish_type }})</span></li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+    <span class="dup-hint-note">No problem if you still want to bring it — just a nudge.</span>
+  </div>
+</div>
+{% endif %}

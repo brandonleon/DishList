@@ -1,0 +1,29 @@
+# Keep the build context to what the image needs: pyproject.toml, uv.lock,
+# README.md (pyproject readme) and app/. The app creates data/ at startup.
+
+# Secrets and local runtime data
+.env*
+data/
+
+# Stale build metadata would shadow the installed package version
+*.egg-info
+build/
+dist/
+wheels/
+
+# Local environments and caches
+.venv
+__pycache__/
+*.py[oc]
+.pytest_cache/
+.ruff_cache/
+.coverage
+
+# Repo and tooling not needed at runtime
+.git
+.github
+.claude
+.fastapicloud
+tests/
+docs/
+dishlist-todos.md

@@ -40,7 +40,15 @@
                 id="dish_name" name="dish_name"
                 placeholder="Lemon Herb Pasta"
                 required maxlength="120"
+                aria-describedby="dish-similar"
+                hx-get="/e/{{ event.slug }}/add/similar"
+                hx-trigger="keyup changed delay:400ms, change"
+                hx-params="dish_name"
+                hx-target="#dish-similar"
+                hx-swap="innerHTML"
+                hx-sync="this:replace"
               />
+              <div id="dish-similar" class="dup-hint-region" aria-live="polite" aria-atomic="true"></div>
             </div>
             <div class="col-md-4">
               <label for="dish_type" class="form-label fw-semibold">
