@@ -28,7 +28,7 @@ view={{ view }}&sort={{ sort }}
             <path d="M14 0H2a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V2a2 2 0 0 0-2-2zM1 3.857C1 3.384 1.448 3 2 3h12c.552 0 1 .384 1 .857v10.286c0 .473-.448.857-1 .857H2c-.552 0-1-.384-1-.857V3.857z"/>
             <path d="M6.5 7a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm3 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm3 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm-9 3a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm3 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm3 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm3 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm-9 3a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm3 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm3 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2z"/>
           </svg>
-          {{ event.event_date }}
+          {{ event.event_date | friendly_date }}
         </p>
       {% endif %}
       {% if event.description %}
@@ -58,6 +58,21 @@ view={{ view }}&sort={{ sort }}
     </div>
   </div>
 </section>
+
+{% if just_added %}
+<div class="alert alert-success d-flex flex-column flex-sm-row align-items-sm-center gap-3 mb-5" role="status">
+  <div class="flex-grow-1">
+    <h2 class="h5 fw-semibold mb-1">🎉 Thanks, {{ just_added.contributor }}! You're on the list.</h2>
+    <p class="mb-0">
+      <a href="#dish-{{ just_added.id }}" class="alert-link">{{ just_added.dish_name }}</a> has been added for everyone to see.
+      Need to change it later? Just let {{ event.host_name }} know.
+    </p>
+  </div>
+  {% if event.is_active %}
+  <a class="btn btn-outline-success flex-shrink-0" href="{{ url_for('event_add_form', slug=event.slug) }}">Add another dish</a>
+  {% endif %}
+</div>
+{% endif %}
 
 <!-- ── Dish type breakdown ──────────────────────────────────── -->
 {% if type_breakdown %}

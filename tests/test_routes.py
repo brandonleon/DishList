@@ -22,7 +22,7 @@ def _create_event(client, name="Test Potluck", dish_types="Main\nSide\nDessert")
         follow_redirects=False,
     )
     assert resp.status_code == 303
-    token = resp.headers["location"].split("/manage/")[1]
+    token = resp.headers["location"].split("/manage/")[1].split("?")[0]
     return token
 
 

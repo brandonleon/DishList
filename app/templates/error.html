@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block nav_actions %}
+<a class="btn btn-outline-secondary px-3" href="{{ url_for('landing') }}">Home</a>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-6">
+    <div class="card shadow-sm">
+      <div class="card-body p-4 p-lg-5 text-center">
+        <p class="display-6 mb-2" aria-hidden="true">🍽️</p>
+        <h1 class="h3 fw-bold mb-3">{{ error_title }}</h1>
+        <p class="text-secondary mb-2">{{ error_message }}</p>
+        {% if error_detail %}
+          <p class="small text-muted mb-0">Details: {{ error_detail }}</p>
+        {% endif %}
+        <div class="d-flex flex-wrap justify-content-center gap-2 mt-4">
+          {% if board_url %}
+            <a class="btn btn-primary" href="{{ board_url }}">See the potluck list</a>
+          {% endif %}
+          <button type="button" class="btn btn-outline-secondary" onclick="history.back()">Go back</button>
+          {% if not board_url %}
+            <a class="btn btn-primary" href="{{ url_for('landing') }}">Go to the home page</a>
+          {% endif %}
+        </div>
+        {% if status_code == 404 and email_enabled() %}
+          <p class="small text-muted mt-4 mb-0">
+            Lost your link? <a href="{{ url_for('find_by_email_form') }}">Find your events and dishes by email</a>.
+          </p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

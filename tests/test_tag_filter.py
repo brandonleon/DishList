@@ -23,7 +23,9 @@ def board(client):
         },
         follow_redirects=False,
     )
-    event = get_event_by_management_token(resp.headers["location"].split("/manage/")[1])
+    event = get_event_by_management_token(
+        resp.headers["location"].split("/manage/")[1].split("?")[0]
+    )
     peanuts = _tag("Contains peanuts")
     dairy = _tag("Contains dairy")
     vegan = _tag("Vegan")
@@ -186,7 +188,9 @@ def test_filter_control_hidden_without_filterable_tags(client):
         data={"name": "Plain", "dish_types_input": "Main", "host_name": "H"},
         follow_redirects=False,
     )
-    event = get_event_by_management_token(resp.headers["location"].split("/manage/")[1])
+    event = get_event_by_management_token(
+        resp.headers["location"].split("/manage/")[1].split("?")[0]
+    )
     add_dish(
         DishEntry(
             event_id=event.id,

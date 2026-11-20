@@ -7,11 +7,15 @@ from app.storage import get_event_by_management_token
 
 
 def _create(client, **extra):
-    data = {"name": "Mail Potluck", "dish_types_input": "Main\nSide", "host_name": "Hosty"}
+    data = {
+        "name": "Mail Potluck",
+        "dish_types_input": "Main\nSide",
+        "host_name": "Hosty",
+    }
     data.update(extra)
     resp = client.post("/create", data=data, follow_redirects=False)
     assert resp.status_code == 303
-    return resp.headers["location"].split("/manage/")[1]
+    return resp.headers["location"].split("/manage/")[1].split("?")[0]
 
 
 class TestCreateEventEmail:
@@ -165,8 +169,12 @@ class TestResendLink:
     def test_button_shown_only_with_email_on_file(self, client, email_on, sent):
         with_email = _create(client, host_email="h@example.com")
         without = _create(client)
-        assert "Email me this management link" in client.get(f"/manage/{with_email}").text
-        assert "Email me this management link" not in client.get(f"/manage/{without}").text
+        assert (
+            "Email me this management link" in client.get(f"/manage/{with_email}").text
+        )
+        assert (
+            "Email me this management link" not in client.get(f"/manage/{without}").text
+        )
 
     def test_resend_sends_to_stored_address_only(self, client, email_on, sent):
         token = _create(client, host_email="h@example.com")
@@ -194,7 +202,9 @@ class TestRetention:
     def _setup(self, client, **event_extra):
         from app.storage import load_dishes_for_event
 
-        token = _create(client, host_email="h@example.com", notify_host="1", **event_extra)
+        token = _create(
+            client, host_email="h@example.com", notify_host="1", **event_extra
+        )
         event = get_event_by_management_token(token)
         _add_dish(client, event.slug, contributor_email="g@example.com")
         return token, event, load_dishes_for_event

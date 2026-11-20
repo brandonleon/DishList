@@ -108,7 +108,7 @@ def _make_event(client, host_name="Grandma June"):
         },
         follow_redirects=False,
     )
-    token = resp.headers["location"].split("/manage/")[1]
+    token = resp.headers["location"].split("/manage/")[1].split("?")[0]
     event = get_event_by_management_token(token)
     assert event is not None
     return token, event

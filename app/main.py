@@ -18,10 +18,12 @@ from importlib import metadata
 import tomllib
 
 from fastapi import BackgroundTasks, FastAPI, Form, HTTPException, Request, status
+from fastapi.exception_handlers import http_exception_handler
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from markupsafe import Markup
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from . import mailer, notifications, ratelimit
 from .config import AppConfig, DATA_DIR, load_config, save_config
@@ -169,6 +171,18 @@ def _format_dish_timestamp(value: datetime | str) -> str:
     return Markup(f'<time class="local-time" datetime="{iso}">{fallback}</time>')
 
 
+def _friendly_date(value) -> str:
+    """``date(2026, 11, 26)`` -> "Thursday, November 26, 2026"."""
+    if not value:
+        return ""
+    if isinstance(value, str):
+        try:
+            value = datetime.fromisoformat(value).date()
+        except ValueError:
+            return value
+    return f"{value:%A, %B} {value.day}, {value.year}"
+
+
 def _load_app_version() -> str:
     try:
         return metadata.version("dishlist")
@@ -188,6 +202,7 @@ APP_VERSION = _load_app_version()
 
 templates.env.filters["format_dish_timestamp"] = _format_dish_timestamp
 templates.env.filters["tag_category_class"] = _tag_category_class
+templates.env.filters["friendly_date"] = _friendly_date
 templates.env.globals["app_version"] = APP_VERSION
 templates.env.globals["email_enabled"] = mailer.is_configured
 
@@ -312,7 +327,7 @@ def _similar_dishes(
 
 
 SORT_OPTIONS = {
-    "type": "Dish type",
+    "type": "Category",
     "name": "Dish name (A–Z)",
     "contributor": "Contributor (A–Z)",
     "newest": "Newest first",
@@ -546,6 +561,77 @@ def _is_ip_allowed(request: Request, networks: List[str]) -> bool:
     return False
 
 
+# Plain-language versions of the errors a guest or host can actually hit.
+# Keys are the HTTPException detail; anything else falls back by status code.
+FRIENDLY_ERRORS = {
+    "Event not found": (
+        "We can't find that event",
+        "The link may have a typo, or the event may have been removed. "
+        "Double-check the link your host sent you.",
+    ),
+    "Management link not found": (
+        "We can't find that management page",
+        "The link may be incomplete. Copy the whole link from your email or "
+        "bookmark and try again.",
+    ),
+    "This event is no longer accepting submissions": (
+        "This potluck is closed to new dishes",
+        "The host has stopped taking submissions. You can still see what "
+        "everyone is bringing.",
+    ),
+}
+FRIENDLY_STATUS = {
+    400: (
+        "Something in that form didn't work",
+        "Go back, check what you entered, and try again.",
+    ),
+    403: (
+        "You don't have access to this page",
+        "If you think this is a mistake, ask the person who sent you the link.",
+    ),
+    404: (
+        "We can't find that page",
+        "The link may have a typo, or the page may have moved.",
+    ),
+}
+
+
+@app.exception_handler(StarletteHTTPException)
+async def friendly_http_error(request: Request, exc: StarletteHTTPException):
+    """Show people in a browser a readable page instead of raw JSON.
+
+    API clients, htmx swaps and tests (which don't ask for HTML) keep the
+    default JSON response.
+    """
+    wants_html = "text/html" in request.headers.get("accept", "")
+    if not wants_html or request.headers.get("hx-request") or exc.status_code < 400:
+        return await http_exception_handler(request, exc)
+    detail = str(exc.detail) if exc.detail else ""
+    title, message = FRIENDLY_ERRORS.get(detail) or FRIENDLY_STATUS.get(
+        exc.status_code,
+        ("Something went wrong", "Please go back and try again in a moment."),
+    )
+    # On an event's pages, offer a way back to its guest board.
+    board_url = None
+    parts = request.url.path.strip("/").split("/")
+    if len(parts) >= 2 and parts[0] == "e" and get_event_by_slug(parts[1]):
+        board_url = f"/e/{parts[1]}"
+    return templates.TemplateResponse(
+        request,
+        "error.html",
+        {
+            "title": f"{title} · DishList",
+            "error_title": title,
+            "error_message": message,
+            "error_detail": None if detail in FRIENDLY_ERRORS else detail,
+            "status_code": exc.status_code,
+            "board_url": board_url,
+        },
+        status_code=exc.status_code,
+        headers=getattr(exc, "headers", None),
+    )
+
+
 def _get_event_by_slug_or_404(slug: str) -> Event:
     event = get_event_by_slug(slug)
     if not event:
@@ -660,7 +746,7 @@ def create_event_submit(
         )
 
     return RedirectResponse(
-        url=request.url_for("manage_event", token=event.management_token),
+        url=f"{request.url_for('manage_event', token=event.management_token)}?notice=created",
         status_code=status.HTTP_303_SEE_OTHER,
     )
 
@@ -763,12 +849,18 @@ def event_home(request: Request, slug: str) -> HTMLResponse:
     host_dishes = [d for d in all_dishes if d.is_host_item]
     guest_dishes = [d for d in all_dishes if not d.is_host_item]
     board = _guest_board_dishes(all_dishes, event, request.query_params)
+    # ?added=<id> after a guest submits: thank them and highlight their dish.
+    added = request.query_params.get("added", "")
+    just_added = next(
+        (d for d in guest_dishes if added.isdigit() and d.id == int(added)), None
+    )
 
     return templates.TemplateResponse(
         request,
         "home.html",
         {
             "event": event,
+            "just_added": just_added,
             "host_dishes": host_dishes,
             "guest_dishes": guest_dishes,
             "table_dishes": board["dishes"],
@@ -849,7 +941,7 @@ def event_add_submission(
         notes=notes.strip() if notes else None,
         contributor_email=clean_contributor_email,
     )
-    add_dish(dish)
+    dish.id = add_dish(dish)
     base_url = _base_url(request)
     if dish.contributor_email:
         background_tasks.add_task(
@@ -864,7 +956,7 @@ def event_add_submission(
             notifications.send_host_dish_notice, event, dish, base_url
         )
     return RedirectResponse(
-        url=request.url_for("event_home", slug=slug),
+        url=f"{request.url_for('event_home', slug=slug)}?added={dish.id}",
         status_code=status.HTTP_303_SEE_OTHER,
     )
 
@@ -992,7 +1084,32 @@ def update_event_settings(
     if not is_active:
         _purge_emails(force=True)
     return RedirectResponse(
-        url=request.url_for("manage_event", token=token),
+        url=f"{request.url_for('manage_event', token=token)}?notice=saved",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+@app.post("/manage/{token}/status")
+def set_event_status(
+    request: Request, token: str, is_active: str = Form(...)
+) -> RedirectResponse:
+    """Open or close submissions without touching the other settings."""
+    event = _get_event_by_token_or_404(token)
+    now_active = is_active == "1"
+    update_event(
+        event_id=event.id,
+        name=event.name,
+        description=event.description,
+        event_date=event.event_date.isoformat() if event.event_date else None,
+        host_name=event.host_name,
+        dish_types=event.dish_types,
+        is_active=now_active,
+    )
+    if not now_active:
+        _purge_emails(force=True)
+    notice = "opened" if now_active else "closed"
+    return RedirectResponse(
+        url=f"{request.url_for('manage_event', token=token)}?notice={notice}",
         status_code=status.HTTP_303_SEE_OTHER,
     )
 
@@ -1048,7 +1165,7 @@ def add_host_item(
         )
     )
     return RedirectResponse(
-        url=request.url_for("manage_event", token=token),
+        url=f"{request.url_for('manage_event', token=token)}?notice=item-added",
         status_code=status.HTTP_303_SEE_OTHER,
     )
 
@@ -1061,7 +1178,7 @@ def delete_host_item(request: Request, token: str, dish_id: int) -> RedirectResp
         raise HTTPException(status_code=404, detail="Dish not found")
     delete_dish(dish_id)
     return RedirectResponse(
-        url=request.url_for("manage_event", token=token),
+        url=f"{request.url_for('manage_event', token=token)}?notice=item-removed",
         status_code=status.HTTP_303_SEE_OTHER,
     )
 
@@ -1128,7 +1245,7 @@ def manage_edit_dish_submit(
         ),
     )
     return RedirectResponse(
-        url=request.url_for("manage_event", token=token),
+        url=f"{request.url_for('manage_event', token=token)}?notice=dish-updated",
         status_code=status.HTTP_303_SEE_OTHER,
     )
 
@@ -1141,7 +1258,7 @@ def manage_delete_dish(request: Request, token: str, dish_id: int) -> RedirectRe
         raise HTTPException(status_code=404, detail="Dish not found")
     delete_dish(dish_id)
     return RedirectResponse(
-        url=request.url_for("manage_event", token=token),
+        url=f"{request.url_for('manage_event', token=token)}?notice=dish-deleted",
         status_code=status.HTTP_303_SEE_OTHER,
     )
 

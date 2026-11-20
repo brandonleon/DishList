@@ -560,3 +560,17 @@ footer {
 .card.host-card-flagged {
   border-color: var(--warn-border) !important;
 }
+
+/* The dish a guest just submitted (board after ?added=<id>). */
+.card.dish-just-added {
+  border: 2px solid var(--nord-green);
+  box-shadow: 0 0 0 0.25rem rgba(163, 190, 140, 0.35);
+}
+
+tr.dish-just-added > td {
+  background: rgba(163, 190, 140, 0.18);
+}
+
+[id^="dish-"] {
+  scroll-margin-top: 1.5rem;
+}

@@ -241,28 +241,30 @@
     const div = document.createElement('div');
     div.className = 'row g-2 mb-2 align-items-end host-item-row';
     div.innerHTML = `
-      <div class="col-12 col-md-5">
-        <label class="form-label small">Dish name</label>
+      <div class="col-12 col-md-4">
+        <label class="form-label small" for="host-item-name-${rowIndex}">Dish name</label>
         <input type="text" class="form-control form-control-sm" name="host_item_names"
-               placeholder="e.g., Turkey, Cider" maxlength="120" />
+               id="host-item-name-${rowIndex}" placeholder="e.g., Turkey, Cider" maxlength="120" />
       </div>
-      <div class="col-8 col-md-4">
-        <label class="form-label small">Category</label>
-        <select class="form-select form-select-sm host-item-type-select" name="host_item_types">
+      <div class="col-12 col-md-3">
+        <label class="form-label small" for="host-item-type-${rowIndex}">Category</label>
+        <select class="form-select form-select-sm host-item-type-select" name="host_item_types"
+                id="host-item-type-${rowIndex}">
           ${buildSelectOptions('')}
         </select>
       </div>
-      <div class="col-8 col-md-2">
-        <label class="form-label small">Notes</label>
+      <div class="col-9 col-md-4">
+        <label class="form-label small" for="host-item-notes-${rowIndex}">Notes</label>
         <input type="text" class="form-control form-control-sm" name="host_item_notes"
-               placeholder="Optional" />
+               id="host-item-notes-${rowIndex}" placeholder="Optional" />
       </div>
-      <div class="col-4 col-md-1 d-flex align-items-end pb-1">
-        <button type="button" class="btn btn-outline-danger btn-sm w-100"
-                onclick="this.closest('.host-item-row').remove()">✕</button>
+      <div class="col-3 col-md-1 d-flex align-items-end">
+        <button type="button" class="btn btn-outline-danger btn-sm w-100" aria-label="Remove this item"
+                title="Remove this item" onclick="this.closest('.host-item-row').remove()">✕</button>
       </div>
     `;
     container.appendChild(div);
+    div.querySelector('input').focus();
   });
 </script>
 {% endblock %}

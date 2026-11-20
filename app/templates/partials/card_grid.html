@@ -1,7 +1,8 @@
 {% if card_dishes %}
   {% for dish in card_dishes %}
-    <div class="col">
-      <div class="card h-100 shadow-sm">
+    {% set is_new = just_added is defined and just_added and just_added.id == dish.id %}
+    <div class="col" id="dish-{{ dish.id }}">
+      <div class="card h-100 shadow-sm{% if is_new %} dish-just-added{% endif %}">
         <div class="card-body">
           <div class="d-flex justify-content-between align-items-start mb-2">
             <div>
@@ -22,6 +23,7 @@
           {% endif %}
         </div>
         <div class="card-footer text-muted small">
+          {% if is_new %}<span class="badge text-bg-success me-1">Just added</span>{% endif %}
           Added {{ dish.created_at | format_dish_timestamp }}
         </div>
       </div>

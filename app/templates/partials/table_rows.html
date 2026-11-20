@@ -1,8 +1,10 @@
 {% if table_dishes %}
   {% for dish in table_dishes %}
-    <tr>
+    {% set is_new = just_added is defined and just_added and just_added.id == dish.id %}
+    <tr id="dish-{{ dish.id }}"{% if is_new %} class="dish-just-added"{% endif %}>
       <td>
         <span class="fw-semibold">{{ dish.dish_name }}</span>
+        {% if is_new %}<span class="badge text-bg-success ms-1">Just added</span>{% endif %}
         {% if dish.tags %}
           <div class="d-flex flex-wrap gap-1 mt-1">
             {% for tag in dish.tags %}
