@@ -1023,14 +1023,34 @@ class TestSortingAndBreakdown:
         event = get_event_by_management_token(_create_event(client))
         assert 'class="type-pie' not in client.get(f"/e/{event.slug}").text
 
+    def test_type_filter_partials(self, client):
+        """Clicking a pie wedge sends ?type=; matching is case-insensitive."""
+        event = _event_with_dishes(client)
+        for path in ("table/rows", "cards/grid"):
+            html = client.get(f"/e/{event.slug}/{path}?type=dessert").text
+            assert "Brownies" in html and "Apple Pie" in html
+            assert "Lasagna" not in html and "Coleslaw" not in html
 
-def test_breakdown_single_type_is_full_circle():
+    def test_type_filter_full_page_marks_selection(self, client):
+        event = _event_with_dishes(client)
+        html = client.get(f"/e/{event.slug}?type=Main").text
+        assert 'name="type"' in html and 'value="Main"' in html
+        assert 'data-type-filter="Main" aria-pressed="true"' in html
+        assert "Coleslaw" not in html.split('id="dish-card-grid"')[1]
+
+    def test_type_filter_no_match_uses_filters_empty_state(self, client):
+        event = _event_with_dishes(client)
+        html = client.get(f"/e/{event.slug}/cards/grid?type=Drinks").text
+        assert "No dishes match these filters yet." in html
+
+
+def test_breakdown_single_type_is_full_share():
     from app.main import _dish_type_breakdown
     from app.models import DishEntry
 
     dishes = [DishEntry(contributor="a", dish_name="x", dish_type="Main")] * 2
     (only,) = _dish_type_breakdown(dishes, ["Main", "Side"])
-    assert only["path"] is None and only["count"] == 2 and only["percent"] == 100
+    assert only["count"] == 2 and only["percent"] == 100
 
 
 def test_manage_page_shows_allergen_tags(client):

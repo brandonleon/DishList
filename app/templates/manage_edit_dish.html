@@ -57,13 +57,6 @@
 {% endblock %}
 
 {% block extra_js %}
-<style>
-  @keyframes tagAutoFlash {
-    0%   { outline: 3px solid rgba(var(--bs-primary-rgb), 0.55); outline-offset: 1px; }
-    100% { outline: 3px solid transparent; outline-offset: 5px; }
-  }
-  .tag-auto-flash { animation: tagAutoFlash 0.65s ease-out forwards; }
-</style>
 <script>
 const TAG_KEYWORDS = {{ tag_keywords_json | safe }};
 </script>

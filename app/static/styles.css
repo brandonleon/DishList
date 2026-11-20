@@ -36,8 +36,12 @@
   --bs-dark: var(--nord-text);
   --bs-link-color: var(--nord-darkblue);
   --bs-link-hover-color: #3E5F80;
-  --shadow-soft: 0 20px 60px rgba(129, 161, 193, 0.18);
+  --shadow-soft: 0 20px 60px rgba(var(--bs-primary-rgb), 0.18);
   --card-border: rgba(46, 52, 64, 0.10);
+  /* Amber "heads up" surfaces: hidden-tag chips and flagged host dishes */
+  --warn-bg: #FBF1DC;
+  --warn-border: #B58A2A;
+  --warn-text: #6B5310;
 }
 
 body {
@@ -48,7 +52,7 @@ body {
 
 .app-body {
   background: radial-gradient(circle at 0% 0%, rgba(180, 142, 173, 0.15), transparent 35%),
-    radial-gradient(circle at 100% 10%, rgba(129, 161, 193, 0.14), transparent 32%),
+    radial-gradient(circle at 100% 10%, rgba(var(--bs-primary-rgb), 0.14), transparent 32%),
     radial-gradient(circle at 75% 55%, rgba(163, 190, 140, 0.10), transparent 28%),
     var(--nord-base);
   position: relative;
@@ -78,7 +82,7 @@ footer {
   background: rgba(236, 239, 244, 0.88);
   backdrop-filter: blur(18px);
   border-radius: 16px;
-  border: 1px solid rgba(129, 161, 193, 0.20);
+  border: 1px solid rgba(var(--bs-primary-rgb), 0.20);
   padding: 0.85rem 0;
 }
 
@@ -91,7 +95,7 @@ footer {
   height: 16px;
   border-radius: 50%;
   background: radial-gradient(circle at 30% 30%, #ffffff, #81A1C1);
-  box-shadow: 0 0 24px rgba(129, 161, 193, 0.55);
+  box-shadow: 0 0 24px rgba(var(--bs-primary-rgb), 0.55);
   display: inline-block;
 }
 
@@ -104,25 +108,25 @@ footer {
 .btn-primary {
   background: linear-gradient(135deg, #88C0D0, #81A1C1);
   border: none;
-  box-shadow: 0 8px 25px rgba(129, 161, 193, 0.32);
+  box-shadow: 0 8px 25px rgba(var(--bs-primary-rgb), 0.32);
 }
 
 .btn-primary:hover,
 .btn-primary:focus {
   background: linear-gradient(135deg, #9ACDD8, #8BADE0);
-  box-shadow: 0 10px 30px rgba(129, 161, 193, 0.40);
+  box-shadow: 0 10px 30px rgba(var(--bs-primary-rgb), 0.40);
 }
 
 .btn-outline-primary {
-  border-color: rgba(129, 161, 193, 0.55);
+  border-color: rgba(var(--bs-primary-rgb), 0.55);
   color: var(--nord-blue);
 }
 
 .btn-outline-primary:hover,
 .btn-outline-primary:focus {
-  background: rgba(129, 161, 193, 0.12);
+  background: rgba(var(--bs-primary-rgb), 0.12);
   color: var(--nord-blue);
-  border-color: rgba(129, 161, 193, 0.70);
+  border-color: rgba(var(--bs-primary-rgb), 0.70);
 }
 
 .navbar .btn + .btn {
@@ -143,15 +147,11 @@ footer {
 }
 
 .table thead {
-  background-color: rgba(129, 161, 193, 0.08);
+  background-color: rgba(var(--bs-primary-rgb), 0.08);
 }
 
 .table > :not(caption) > * > * {
   border-color: var(--nord-surface1);
-}
-
-.table-responsive {
-  border: 1px solid var(--card-border);
 }
 
 .form-control,
@@ -164,8 +164,8 @@ footer {
 
 .form-control:focus,
 .form-select:focus {
-  box-shadow: 0 0 0 0.2rem rgba(129, 161, 193, 0.28);
-  border-color: rgba(129, 161, 193, 0.65);
+  box-shadow: 0 0 0 0.2rem rgba(var(--bs-primary-rgb), 0.28);
+  border-color: rgba(var(--bs-primary-rgb), 0.65);
 }
 
 .form-text {
@@ -177,7 +177,7 @@ footer {
 }
 
 .splash-card {
-  border: 1px dashed rgba(129, 161, 193, 0.40);
+  border: 1px dashed rgba(var(--bs-primary-rgb), 0.40);
 }
 
 .htmx-indicator {
@@ -189,10 +189,10 @@ footer {
 }
 
 .tag-picker-group {
-  border: 1px solid rgba(129, 161, 193, 0.25);
+  border: 1px solid rgba(var(--bs-primary-rgb), 0.25);
   border-radius: 0.9rem;
   padding: 0.9rem;
-  background: linear-gradient(145deg, rgba(129, 161, 193, 0.08), rgba(143, 188, 187, 0.05));
+  background: linear-gradient(145deg, rgba(var(--bs-primary-rgb), 0.08), rgba(143, 188, 187, 0.05));
 }
 
 .tag-picker-group p {
@@ -226,24 +226,6 @@ footer {
   color: #7A6010;
 }
 
-.tag-pill-prep {
-  background-color: rgba(129, 161, 193, 0.12);
-  border-color: rgba(129, 161, 193, 0.38);
-  color: #3B5A78;
-}
-
-.tag-pill-additives {
-  background-color: rgba(180, 142, 173, 0.12);
-  border-color: rgba(180, 142, 173, 0.40);
-  color: #6E4D6A;
-}
-
-.tag-pill-spice {
-  background-color: rgba(191, 97, 106, 0.12);
-  border-color: rgba(191, 97, 106, 0.32);
-  color: #7A3B40;
-}
-
 .tag-pill-logistics {
   background-color: rgba(136, 192, 208, 0.12);
   border-color: rgba(136, 192, 208, 0.42);
@@ -270,22 +252,18 @@ footer {
 }
 
 .tag-picker-option .btn-check:focus + .tag-pill {
-  box-shadow: 0 0 0 0.15rem rgba(129, 161, 193, 0.25);
-}
-
-.tag-admin-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding-right: 0.5rem;
-}
-
-.tag-admin-chip button {
-  text-decoration: none;
-  font-size: 0.8rem;
+  box-shadow: 0 0 0 0.15rem rgba(var(--bs-primary-rgb), 0.25);
 }
 
 .opacity-60 { opacity: 0.6; }
+
+/* Flash a tag the add/edit form auto-detected from the dish name */
+@keyframes tagAutoFlash {
+  0%   { outline: 3px solid rgba(var(--bs-primary-rgb), 0.55); outline-offset: 1px; }
+  100% { outline: 3px solid transparent; outline-offset: 5px; }
+}
+
+.tag-auto-flash { animation: tagAutoFlash 0.65s ease-out forwards; }
 
 /* Hatched background on hidden tag rows */
 .tag-row-hidden .tag-view {
@@ -300,11 +278,16 @@ footer {
 }
 
 /* ── Dish type breakdown (event page pie) ─────────────────────── */
-.type-pie path,
-.type-pie circle {
-  stroke: #fff;
-  stroke-width: 0.02;
-  stroke-linejoin: round;
+/* chart.xkcd sizes the pie from this box: height = 2/3 width, and it keeps a
+   fixed 50px margin for the hover tooltip, so 300px gives a 50px radius. */
+.type-pie-wrap {
+  width: 300px;
+  max-width: 100%;
+  margin: -1.5rem -1rem;
+}
+
+.type-pie {
+  display: block;
 }
 
 .type-legend {
@@ -315,9 +298,53 @@ footer {
 
 .type-legend li {
   display: flex;
+  font-size: 0.925rem;
+}
+
+.type-pie-arc {
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.type-pie-arc.is-dimmed {
+  opacity: 0.3;
+}
+
+.type-legend-btn {
+  display: flex;
+  flex: 0 1 auto;
+  min-width: 0;
   align-items: center;
   gap: 0.5rem;
-  font-size: 0.925rem;
+  max-width: 100%;
+  padding: 0.125rem 0.375rem;
+  margin: -0.125rem -0.375rem;
+  border: 0;
+  border-radius: 0.375rem;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  transition: opacity 0.15s ease, background-color 0.15s ease;
+}
+
+/* Keep names whole inside the button; only very long ones get an ellipsis. */
+.type-legend-btn .type-name {
+  flex-shrink: 0;
+  max-width: 12rem;
+}
+
+.type-legend-btn:hover {
+  background: rgba(46, 52, 64, 0.06);
+}
+
+.type-legend-btn[aria-pressed="true"] {
+  background: rgba(94, 129, 172, 0.15);
+  font-weight: 600;
+}
+
+.type-legend-btn.is-dimmed {
+  opacity: 0.5;
 }
 
 .type-swatch {
@@ -343,8 +370,14 @@ footer {
     flex-direction: column;
   }
 
-  .type-name {
+  .type-legend-btn {
     flex-grow: 1;
+  }
+
+  .type-legend-btn .type-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: none;
   }
 }
 
@@ -439,9 +472,9 @@ footer {
 }
 
 .btn-check:checked + .tag-filter-chip-hide {
-  background: #FBF1DC;
-  border-color: #B58A2A;
-  color: #6B5310;
+  background: var(--warn-bg);
+  border-color: var(--warn-border);
+  color: var(--warn-text);
   text-decoration: line-through;
   text-decoration-thickness: 1.5px;
 }
@@ -474,10 +507,10 @@ footer {
   align-items: flex-start;
   gap: 0.4rem;
   padding: 0.4rem 0.6rem;
-  border-left: 3px solid #B58A2A;
+  border-left: 3px solid var(--warn-border);
   border-radius: 0.375rem;
-  background: #FBF1DC;
-  color: #6B5310;
+  background: var(--warn-bg);
+  color: var(--warn-text);
 }
 
 .host-filter-flag[hidden] {
@@ -489,5 +522,5 @@ footer {
 }
 
 .card.host-card-flagged {
-  border-color: #B58A2A !important;
+  border-color: var(--warn-border) !important;
 }

@@ -5,7 +5,6 @@ import hmac
 import ipaddress
 import json
 import logging
-import math
 import os
 import signal
 import time
@@ -436,14 +435,19 @@ def _apply_tag_filter(
 
 
 def _guest_board_dishes(all_dishes: List[DishEntry], event: Event, params) -> dict:
-    """Search, tag-filter and sort Guest Submissions from request params.
+    """Search, tag-filter, Dish-Type-filter and sort Guest Submissions from
+    request params.
     Host Contributions are never filtered (see CONTEXT.md, Guest Board)."""
     search = (params.get("search") or "").strip()
     sort = _normalize_sort(params.get("sort"))
     options = _tag_filter_options(all_dishes)
     hide, only = _parse_tag_filter(params, options)
+    dish_type = (params.get("type") or "").strip()
     guests = [d for d in all_dishes if not d.is_host_item]
     guests = _filter_dishes(guests, search) if search else guests
+    if dish_type:
+        wanted = dish_type.casefold()
+        guests = [d for d in guests if d.dish_type.casefold() == wanted]
     guests = _sort_dishes(_apply_tag_filter(guests, hide, only), sort, event.dish_types)
     return {
         "dishes": guests,
@@ -452,13 +456,14 @@ def _guest_board_dishes(all_dishes: List[DishEntry], event: Event, params) -> di
         "tag_options": options,
         "hide_ids": hide,
         "only_ids": only,
-        "filters_active": bool(hide or only),
+        "dish_type": dish_type,
+        "filters_active": bool(hide or only or dish_type),
     }
 
 
 def _dish_type_breakdown(dishes: List[DishEntry], dish_types: List[str]) -> List[dict]:
-    """Count dishes per Dish Type and precompute SVG pie-slice paths
-    (viewBox -1 -1 2 2, radius 1, starting at 12 o'clock)."""
+    """Count dishes per Dish Type, with a stable color per type for the
+    chart.xkcd pie and its legend."""
     counts: dict[str, int] = {}
     for dish in dishes:
         counts[dish.dish_type] = counts.get(dish.dish_type, 0) + 1
@@ -470,32 +475,21 @@ def _dish_type_breakdown(dishes: List[DishEntry], dish_types: List[str]) -> List
     total = sum(counts.values())
     color_for = {t: PIE_COLORS[i % len(PIE_COLORS)] for i, t in enumerate(dish_types)}
     slices: List[dict] = []
-    start = 0.0
     extra = len(dish_types)
     for name in order:
         count = counts[name]
         frac = count / total
-        end = start + frac
         if name not in color_for:
             color_for[name] = PIE_COLORS[extra % len(PIE_COLORS)]
             extra += 1
-        if frac >= 1:
-            path = None  # full circle; template draws a <circle>
-        else:
-            x0, y0 = math.sin(2 * math.pi * start), -math.cos(2 * math.pi * start)
-            x1, y1 = math.sin(2 * math.pi * end), -math.cos(2 * math.pi * end)
-            large = 1 if frac > 0.5 else 0
-            path = f"M0 0 L{x0:.4f} {y0:.4f} A1 1 0 {large} 1 {x1:.4f} {y1:.4f} Z"
         slices.append(
             {
                 "name": name,
                 "count": count,
                 "percent": round(frac * 100),
                 "color": color_for[name],
-                "path": path,
             }
         )
-        start = end
     return slices
 
 
@@ -787,6 +781,7 @@ def event_home(request: Request, slug: str) -> HTMLResponse:
             "hide_ids": board["hide_ids"],
             "only_ids": board["only_ids"],
             "filters_active": board["filters_active"],
+            "type_filter": board["dish_type"],
             "type_breakdown": _dish_type_breakdown(all_dishes, event.dish_types),
         },
     )
@@ -902,7 +897,7 @@ def event_add_similar_partial(
 
 @app.get("/e/{slug}/table/rows", response_class=HTMLResponse)
 def event_table_rows_partial(request: Request, slug: str) -> HTMLResponse:
-    """Accepts search, sort and repeated hide/only tag ids as query params."""
+    """Accepts search, sort, type and repeated hide/only tag ids as query params."""
     event = _get_event_by_slug_or_404(slug)
     all_dishes = load_dishes_for_event(event.id)
     board = _guest_board_dishes(all_dishes, event, request.query_params)
@@ -915,7 +910,7 @@ def event_table_rows_partial(request: Request, slug: str) -> HTMLResponse:
 
 @app.get("/e/{slug}/cards/grid", response_class=HTMLResponse)
 def event_card_grid_partial(request: Request, slug: str) -> HTMLResponse:
-    """Accepts search, sort and repeated hide/only tag ids as query params."""
+    """Accepts search, sort, type and repeated hide/only tag ids as query params."""
     event = _get_event_by_slug_or_404(slug)
     all_dishes = load_dishes_for_event(event.id)
     board = _guest_board_dishes(all_dishes, event, request.query_params)
