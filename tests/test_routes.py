@@ -996,3 +996,27 @@ def test_breakdown_single_type_is_full_circle():
     dishes = [DishEntry(contributor="a", dish_name="x", dish_type="Main")] * 2
     (only,) = _dish_type_breakdown(dishes, ["Main", "Side"])
     assert only["path"] is None and only["count"] == 2 and only["percent"] == 100
+
+
+def test_manage_page_shows_allergen_tags(client):
+    """The management table dropped allergen tags after v0.5.0 removed the
+    separate Allergens column, so allergen-only dishes read "None"."""
+    from app.storage import get_event_by_management_token, load_tags
+
+    token = _create_event(client)
+    event = get_event_by_management_token(token)
+    tag = next(t for t in load_tags() if t.category == "Allergen warnings")
+    resp = client.post(
+        f"/e/{event.slug}/add",
+        data={
+            "contributor": "Miich",
+            "dish_name": "Pumpkin Pie",
+            "dish_type": "Dessert",
+            "dietary_tags": str(tag.id),
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    html = client.get(f"/manage/{token}").text
+    assert tag.name in html
+    assert "<th>Tags</th>" in html

@@ -195,7 +195,7 @@
           <thead class="table-light">
             <tr>
               <th>Dish</th><th>Type</th><th>Contributor</th>
-              <th>Dietary</th><th>Notes</th><th>Added</th>
+              <th>Tags</th><th>Notes</th><th>Added</th>
               <th class="text-end">Actions</th>
             </tr>
           </thead>
@@ -206,10 +206,9 @@
                 <td>{{ dish.dish_type }}</td>
                 <td>{{ dish.contributor }}</td>
                 <td>
-                  {% set dietary_tags = dish.tags | rejectattr('category', 'equalto', 'Allergen warnings') | list %}
-                  {% if dietary_tags %}
+                  {% if dish.tags %}
                     <div class="d-flex flex-wrap gap-1">
-                      {% for tag in dietary_tags %}
+                      {% for tag in dish.tags %}
                         <span class="badge tag-pill {{ tag.category | tag_category_class }}">{{ tag.name }}</span>
                       {% endfor %}
                     </div>
