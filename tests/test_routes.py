@@ -883,6 +883,41 @@ class TestMetricsEndpoint:
         assert 'status="200"' in body
 
 
+class TestMetricsToken:
+    """METRICS_TOKEN env var: bearer-token auth for hosted deploys."""
+
+    def test_token_enables_metrics_without_db_toggle(self, client, monkeypatch):
+        monkeypatch.setenv("METRICS_TOKEN", "s3cret")
+        resp = client.get("/metrics", headers={"Authorization": "Bearer s3cret"})
+        assert resp.status_code == 200
+        assert "dishlist_events_total" in resp.text
+
+    @pytest.mark.parametrize(
+        "header", [None, "Bearer wrong", "Basic s3cret", "s3cret", "Bearer "]
+    )
+    def test_missing_or_bad_token_is_401(self, client, monkeypatch, header):
+        monkeypatch.setenv("METRICS_TOKEN", "s3cret")
+        headers = {"Authorization": header} if header is not None else {}
+        resp = client.get("/metrics", headers=headers)
+        assert resp.status_code == 401
+        assert resp.headers["www-authenticate"] == "Bearer"
+
+    def test_token_ignores_ip_allowlist(self, client, monkeypatch):
+        from app.config import AppConfig, save_config
+        from app.main import app
+
+        cfg = AppConfig(metrics_enabled=True, metrics_networks=["127.0.0.1/32"])
+        save_config(cfg)
+        app.state.config = cfg
+        monkeypatch.setenv("METRICS_TOKEN", "s3cret")
+        # An allowed IP alone is not enough once a token is configured.
+        assert client.get("/metrics").status_code == 401
+
+    def test_blank_token_keeps_existing_behaviour(self, client, monkeypatch):
+        monkeypatch.setenv("METRICS_TOKEN", "   ")
+        assert client.get("/metrics").status_code == 404
+
+
 class TestHeadRequests:
     """Uptime monitors commonly probe with HEAD; it must not return 405."""
 

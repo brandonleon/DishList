@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import difflib
+import hmac
 import ipaddress
 import json
 import logging
@@ -506,8 +507,30 @@ def _check_admin_access(request: Request, config: AppConfig) -> None:
         raise HTTPException(status_code=403, detail="Admin access restricted")
 
 
+def _metrics_token() -> str:
+    return os.environ.get("METRICS_TOKEN", "").strip()
+
+
 def _check_metrics_access(request: Request, config: AppConfig) -> None:
-    """Raise 404 if metrics are disabled, 403 if IP is not allowed."""
+    """Gate /metrics.
+
+    With METRICS_TOKEN set (e.g. on a hosted deploy with no CLI access, where
+    the client IP behind the platform proxy can't be trusted), /metrics is on
+    and requires ``Authorization: Bearer <token>``; the DB toggle and IP
+    allowlist are not used. Otherwise: 404 if disabled, 403 if IP not allowed.
+    """
+    token = _metrics_token()
+    if token:
+        scheme, _, supplied = request.headers.get("authorization", "").partition(" ")
+        if scheme.lower() == "bearer" and hmac.compare_digest(
+            supplied.strip().encode(), token.encode()
+        ):
+            return
+        raise HTTPException(
+            status_code=401,
+            detail="Metrics token required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     if not config.metrics_enabled:
         raise HTTPException(status_code=404, detail="Not found")
     if not _is_ip_allowed(request, config.metrics_networks):

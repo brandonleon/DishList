@@ -133,6 +133,26 @@ allowlist get 403. Exposed metrics include `dishlist_http_requests_total`,
 `dishlist_http_request_duration_seconds`, `dishlist_events_total`, and
 `dishlist_dishes_total`.
 
+### Token auth for hosted deploys
+
+On a hosted platform (e.g. FastAPI Cloud) you may have no CLI access, and the
+client IP seen behind the platform's proxy can't be trusted for an allowlist.
+Set the `METRICS_TOKEN` environment variable instead: `/metrics` is then
+enabled and requires `Authorization: Bearer <token>`, and the CLI toggle and
+IP allowlist are ignored (missing or wrong token → 401). Generate one with
+`python -c "import secrets; print(secrets.token_urlsafe(32))"`.
+
+```yaml
+# prometheus.yml
+- job_name: dishlist
+  scheme: https
+  metrics_path: /metrics
+  static_configs:
+    - targets: ['dishlist.example.com']
+  authorization:
+    credentials_file: /etc/prometheus/dishlist_token
+```
+
 ## Docker
 
 ```bash

@@ -40,6 +40,9 @@ def isolated_db(tmp_path, monkeypatch):
         # Never let a developer's real DATABASE_URL leak into the test run.
         monkeypatch.delenv("DATABASE_URL", raising=False)
 
+    # A developer's own METRICS_TOKEN would change /metrics behaviour.
+    monkeypatch.delenv("METRICS_TOKEN", raising=False)
+
     init_db()
     yield test_db
     storage_mod.close_pool()
