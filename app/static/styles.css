@@ -354,8 +354,9 @@ footer {
   flex-shrink: 0;
 }
 
-/* "Showing only X dishes" bar above the guest list while a pie filter is on. */
-.type-filter-banner {
+/* "Showing only X dishes matching …" bar above the guest list while a search
+   or pie-chart type filter is on. */
+.filter-banner {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -367,8 +368,26 @@ footer {
   background: rgba(var(--bs-primary-rgb), 0.12);
 }
 
-.type-filter-banner[hidden] {
+.filter-banner[hidden] {
   display: none;
+}
+
+.filter-banner-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.filter-banner .type-swatch {
+  display: inline-block;
+  margin-right: 0.3rem;
+  vertical-align: -0.05rem;
+}
+
+.filter-banner-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-left: auto;
 }
 
 .type-name {

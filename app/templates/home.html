@@ -259,19 +259,27 @@ view={{ view }}&sort={{ sort }}
     {% endif %}
   </form>
 
-  {# Shown while a pie wedge / legend entry narrows the list to one Dish Type. #}
+  {# Says the list below is narrowed (by search and/or a pie-chart Dish Type),
+     with a clear button for each. The board script keeps it in sync. #}
   {% set ns = namespace(active_slice=none) %}
   {% for s in type_breakdown or [] %}
     {% if type_filter and s.name | lower == type_filter | lower %}{% set ns.active_slice = s %}{% endif %}
   {% endfor %}
   {% set active_slice = ns.active_slice %}
-  <div class="type-filter-banner mb-3" data-type-filter-banner role="status" {% if not type_filter %}hidden{% endif %}>
-    <span class="type-swatch" data-type-filter-swatch
-          style="background: {{ active_slice.color if active_slice else 'transparent' }}"></span>
-    <span>Showing only <strong data-type-filter-name>{{ active_slice.name if active_slice else type_filter }}</strong> dishes</span>
-    <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" data-clear-type-filter>
-      Show all types
-    </button>
+  <div class="filter-banner mb-3" data-filter-banner role="status" {% if not (type_filter or search_query) %}hidden{% endif %}>
+    <span class="filter-banner-text">
+      Showing<span data-type-part {% if not type_filter %}hidden{% endif %}> only
+        <span class="type-swatch" data-type-filter-swatch
+              style="background: {{ active_slice.color if active_slice else 'transparent' }}"></span><strong data-type-filter-name>{{ active_slice.name if active_slice else type_filter }}</strong></span>
+      dishes<span data-search-part {% if not search_query %}hidden{% endif %}> matching
+        <strong>“<span data-search-term>{{ search_query }}</span>”</strong></span>
+    </span>
+    <span class="filter-banner-actions">
+      <button type="button" class="btn btn-sm btn-outline-secondary" data-clear-search
+              {% if not search_query %}hidden{% endif %}>Clear search</button>
+      <button type="button" class="btn btn-sm btn-outline-secondary" data-clear-type-filter
+              {% if not type_filter %}hidden{% endif %}>Show all types</button>
+    </span>
   </div>
 
   {% if view_mode == 'table' %}
@@ -353,11 +361,10 @@ view={{ view }}&sort={{ sort }}
     const arcs = svg.querySelectorAll('path[class=".xkcd-chart-arc"]');
     const legendBtns = document.querySelectorAll("[data-type-filter]");
     const clearBtns = document.querySelectorAll("[data-clear-type-filter]");
-    const banner = document.querySelector("[data-type-filter-banner]");
+    const inBanner = (btn) => !!btn.closest("[data-filter-banner]");
 
     function render() {
       const current = input.value.toLowerCase();
-      const active = slices.find((s) => s.name.toLowerCase() === current);
       arcs.forEach((arc, i) => {
         arc.classList.toggle("is-dimmed", !!current && slices[i].name.toLowerCase() !== current);
       });
@@ -366,14 +373,10 @@ view={{ view }}&sort={{ sort }}
         btn.setAttribute("aria-pressed", on ? "true" : "false");
         btn.classList.toggle("is-dimmed", !!current && !on);
       });
+      // The banner's copy is shown/hidden by the board script's sync().
       clearBtns.forEach((btn) => {
-        if (!banner || !banner.contains(btn)) btn.hidden = !current;
+        if (!inBanner(btn)) btn.hidden = !current;
       });
-      if (banner) {
-        banner.hidden = !current;
-        banner.querySelector("[data-type-filter-name]").textContent = active ? active.name : input.value;
-        banner.querySelector("[data-type-filter-swatch]").style.background = active ? active.color : "transparent";
-      }
     }
 
     function choose(name) {
@@ -389,9 +392,9 @@ view={{ view }}&sort={{ sort }}
     legendBtns.forEach((btn) => btn.addEventListener("click", () => choose(btn.dataset.typeFilter)));
     clearBtns.forEach((btn) =>
       btn.addEventListener("click", () => {
-        const fromBanner = banner && banner.contains(btn);
+        const fromBanner = inBanner(btn);
         choose(input.value);
-        if (fromBanner) document.getElementById("dish-search")?.focus(); // banner just hid
+        if (fromBanner) document.getElementById("dish-search")?.focus(); // the button just hid
       })
     );
     render();
@@ -431,7 +434,37 @@ view={{ view }}&sort={{ sort }}
       if (clearBtn) {
         clearBtn.hidden = !Array.from(tagBoxes()).some((box) => box.checked);
       }
+      syncBanner();
     }
+
+    // "Showing only X dishes matching “…”" above the list.
+    const banner = document.querySelector("[data-filter-banner]");
+    const search = document.getElementById("dish-search");
+    const typeInput = document.getElementById("dish-type-filter");
+    const dataEl = document.getElementById("type-breakdown-data");
+    const slices = dataEl ? JSON.parse(dataEl.textContent) : [];
+
+    function syncBanner() {
+      if (!banner) return;
+      const term = search ? search.value.trim() : "";
+      const type = typeInput ? typeInput.value : "";
+      const slice = slices.find((s) => s.name.toLowerCase() === type.toLowerCase());
+      banner.querySelector("[data-type-part]").hidden = !type;
+      banner.querySelector("[data-type-filter-name]").textContent = slice ? slice.name : type;
+      banner.querySelector("[data-type-filter-swatch]").style.background = slice ? slice.color : "transparent";
+      banner.querySelector("[data-clear-type-filter]").hidden = !type;
+      banner.querySelector("[data-search-part]").hidden = !term;
+      banner.querySelector("[data-search-term]").textContent = term;
+      banner.querySelector("[data-clear-search]").hidden = !term;
+      banner.hidden = !(type || term);
+    }
+
+    banner?.querySelector("[data-clear-search]").addEventListener("click", () => {
+      search.value = "";
+      sync();
+      htmx.trigger(search, "search"); // refetch the list
+      search.focus();
+    });
 
     form.addEventListener("change", sync);
     form.addEventListener("input", sync);

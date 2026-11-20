@@ -1038,6 +1038,15 @@ class TestSortingAndBreakdown:
         assert 'data-type-filter="Main" aria-pressed="true"' in html
         assert "Coleslaw" not in html.split('id="dish-card-grid"')[1]
 
+    @staticmethod
+    def _banner(html, list_id="dish-card-grid"):
+        return html.split("data-filter-banner")[1].split(list_id)[0]
+
+    @staticmethod
+    def _shown(banner, attr):
+        """True if the element carrying ``attr`` has no ``hidden`` attribute."""
+        return "hidden" not in banner.split(attr)[1].split(">")[0]
+
     def test_type_filter_banner_above_list(self, client):
         """The list itself says a type filter is on, with its own clear button."""
         event = _event_with_dishes(client)
@@ -1046,15 +1055,42 @@ class TestSortingAndBreakdown:
             ("table", "dish-table-body"),
         ):
             html = client.get(f"/e/{event.slug}?view={view}&type=dessert").text
-            banner = html.split("data-type-filter-banner")[1].split(list_id)[0]
+            banner = self._banner(html, list_id)
             assert "hidden" not in banner.split(">")[0]
             assert "<strong data-type-filter-name>Dessert</strong>" in banner
-            assert "data-clear-type-filter" in banner
+            assert self._shown(banner, "data-type-part")
+            assert self._shown(banner, "data-clear-type-filter")
+            assert not self._shown(banner, "data-search-part")
+            assert not self._shown(banner, "data-clear-search")
 
-    def test_type_filter_banner_hidden_without_filter(self, client):
+    def test_search_shows_filter_banner(self, client):
+        """A typed search also marks the list as filtered, with a clear button."""
+        event = _event_with_dishes(client)
+        html = client.get(f"/e/{event.slug}?search=pie").text
+        banner = self._banner(html)
+        assert "hidden" not in banner.split(">")[0]
+        assert "<span data-search-term>pie</span>" in banner
+        assert self._shown(banner, "data-search-part")
+        assert self._shown(banner, "data-clear-search")
+        assert not self._shown(banner, "data-type-part")
+        assert not self._shown(banner, "data-clear-type-filter")
+
+    def test_search_and_type_share_banner(self, client):
+        event = _event_with_dishes(client)
+        html = client.get(f"/e/{event.slug}?search=pie&type=Dessert").text
+        banner = self._banner(html)
+        for attr in (
+            "data-type-part",
+            "data-search-part",
+            "data-clear-type-filter",
+            "data-clear-search",
+        ):
+            assert self._shown(banner, attr)
+
+    def test_filter_banner_hidden_without_filter(self, client):
         event = _event_with_dishes(client)
         html = client.get(f"/e/{event.slug}").text
-        assert "hidden" in html.split("data-type-filter-banner")[1].split(">")[0]
+        assert "hidden" in html.split("data-filter-banner")[1].split(">")[0]
 
     def test_type_filter_no_match_uses_filters_empty_state(self, client):
         event = _event_with_dishes(client)
