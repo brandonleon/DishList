@@ -108,7 +108,7 @@ Live search filters Guest Submissions only. Host Contributions are always shown 
 
 **Tag filters** narrow the Guest Board by the Tags actually used on the Event's Dishes. Allergen warnings can only be *hidden* ("Hide dishes containing: Peanuts") and Dietary preferences can only be *required* ("Show only dishes tagged: Vegan"; several selected means a Dish must carry all of them). Content & serving Tags are not offered as filters. Consistent with the warning-based tagging rule, filtering never claims a Dish is free of anything: it only hides Dishes that declare an allergen, and an untagged Dish may still contain it. Like search, Tag filters apply to Guest Submissions only. Host Contributions stay visible, but one carrying an allergen the Guest is hiding is visibly flagged so the Guest is not misled.
 
-**Dish Type filter**: clicking a wedge of the "What's on the table" pie (or its legend entry) narrows the Guest Board to that one Dish Type; clicking it again shows everything. It combines with search and Tag filters and, like them, applies to Guest Submissions only. The pie itself always counts every Dish, Host Contributions included.
+**Dish Type filter**: clicking a wedge of the "What's on the table" pie (or its legend entry) narrows the Guest Board to that one Dish Type; clicking it again shows everything. While it is on, a "Showing only X dishes" banner sits directly above the cards or table with its own "Show all types" button, so the narrowing is visible without scrolling back up to the pie. It combines with search and Tag filters and, like them, applies to Guest Submissions only. The pie itself always counts every Dish, Host Contributions included.
 
 ## Management Page
 

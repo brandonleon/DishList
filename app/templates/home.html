@@ -259,6 +259,21 @@ view={{ view }}&sort={{ sort }}
     {% endif %}
   </form>
 
+  {# Shown while a pie wedge / legend entry narrows the list to one Dish Type. #}
+  {% set ns = namespace(active_slice=none) %}
+  {% for s in type_breakdown or [] %}
+    {% if type_filter and s.name | lower == type_filter | lower %}{% set ns.active_slice = s %}{% endif %}
+  {% endfor %}
+  {% set active_slice = ns.active_slice %}
+  <div class="type-filter-banner mb-3" data-type-filter-banner role="status" {% if not type_filter %}hidden{% endif %}>
+    <span class="type-swatch" data-type-filter-swatch
+          style="background: {{ active_slice.color if active_slice else 'transparent' }}"></span>
+    <span>Showing only <strong data-type-filter-name>{{ active_slice.name if active_slice else type_filter }}</strong> dishes</span>
+    <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" data-clear-type-filter>
+      Show all types
+    </button>
+  </div>
+
   {% if view_mode == 'table' %}
     <div class="table-responsive bg-white rounded-4 shadow-sm">
       <table class="table align-middle mb-0">
@@ -337,10 +352,12 @@ view={{ view }}&sort={{ sort }}
     // slice in data order.
     const arcs = svg.querySelectorAll('path[class=".xkcd-chart-arc"]');
     const legendBtns = document.querySelectorAll("[data-type-filter]");
-    const clearBtn = document.querySelector("[data-clear-type-filter]");
+    const clearBtns = document.querySelectorAll("[data-clear-type-filter]");
+    const banner = document.querySelector("[data-type-filter-banner]");
 
     function render() {
       const current = input.value.toLowerCase();
+      const active = slices.find((s) => s.name.toLowerCase() === current);
       arcs.forEach((arc, i) => {
         arc.classList.toggle("is-dimmed", !!current && slices[i].name.toLowerCase() !== current);
       });
@@ -349,7 +366,14 @@ view={{ view }}&sort={{ sort }}
         btn.setAttribute("aria-pressed", on ? "true" : "false");
         btn.classList.toggle("is-dimmed", !!current && !on);
       });
-      if (clearBtn) clearBtn.hidden = !current;
+      clearBtns.forEach((btn) => {
+        if (!banner || !banner.contains(btn)) btn.hidden = !current;
+      });
+      if (banner) {
+        banner.hidden = !current;
+        banner.querySelector("[data-type-filter-name]").textContent = active ? active.name : input.value;
+        banner.querySelector("[data-type-filter-swatch]").style.background = active ? active.color : "transparent";
+      }
     }
 
     function choose(name) {
@@ -363,7 +387,13 @@ view={{ view }}&sort={{ sort }}
       arc.addEventListener("click", () => choose(slices[i].name));
     });
     legendBtns.forEach((btn) => btn.addEventListener("click", () => choose(btn.dataset.typeFilter)));
-    if (clearBtn) clearBtn.addEventListener("click", () => choose(input.value));
+    clearBtns.forEach((btn) =>
+      btn.addEventListener("click", () => {
+        const fromBanner = banner && banner.contains(btn);
+        choose(input.value);
+        if (fromBanner) document.getElementById("dish-search")?.focus(); // banner just hid
+      })
+    );
     render();
   })();
 </script>

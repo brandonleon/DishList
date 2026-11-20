@@ -354,6 +354,23 @@ footer {
   flex-shrink: 0;
 }
 
+/* "Showing only X dishes" bar above the guest list while a pie filter is on. */
+.type-filter-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  padding: 0.6rem 0.9rem;
+  border: 1px solid rgba(var(--bs-primary-rgb), 0.45);
+  border-left-width: 4px;
+  border-radius: 0.75rem;
+  background: rgba(var(--bs-primary-rgb), 0.12);
+}
+
+.type-filter-banner[hidden] {
+  display: none;
+}
+
 .type-name {
   overflow: hidden;
   text-overflow: ellipsis;

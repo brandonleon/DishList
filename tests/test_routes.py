@@ -1038,6 +1038,24 @@ class TestSortingAndBreakdown:
         assert 'data-type-filter="Main" aria-pressed="true"' in html
         assert "Coleslaw" not in html.split('id="dish-card-grid"')[1]
 
+    def test_type_filter_banner_above_list(self, client):
+        """The list itself says a type filter is on, with its own clear button."""
+        event = _event_with_dishes(client)
+        for view, list_id in (
+            ("cards", "dish-card-grid"),
+            ("table", "dish-table-body"),
+        ):
+            html = client.get(f"/e/{event.slug}?view={view}&type=dessert").text
+            banner = html.split("data-type-filter-banner")[1].split(list_id)[0]
+            assert "hidden" not in banner.split(">")[0]
+            assert "<strong data-type-filter-name>Dessert</strong>" in banner
+            assert "data-clear-type-filter" in banner
+
+    def test_type_filter_banner_hidden_without_filter(self, client):
+        event = _event_with_dishes(client)
+        html = client.get(f"/e/{event.slug}").text
+        assert "hidden" in html.split("data-type-filter-banner")[1].split(">")[0]
+
     def test_type_filter_no_match_uses_filters_empty_state(self, client):
         event = _event_with_dishes(client)
         html = client.get(f"/e/{event.slug}/cards/grid?type=Drinks").text
